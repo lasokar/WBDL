@@ -582,6 +582,7 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
 async function sendDiscordNotification(content) {
+    if (!DISCORD_WEBHOOK_URL) return; // Prevent crashes if webhook isn't configured
     try {
         await fetch(DISCORD_WEBHOOK_URL, {
             method: 'POST',
@@ -597,122 +598,76 @@ async function sendDiscordNotification(content) {
     }
 }
 
-async function recordChange(type, demonId, name, oldPos, newPos, extra = {}, listType = 'primary') {
-    const client = extra.client || pool;
-    try {
-        await client.query('BEGIN');
-
-        await client.query(
-            `INSERT INTO changelog (demon_id, demon_name, change_type, old_position, new_position, list_type) 
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [demonId, name, type, oldPos, newPos, listType]
-        );
-
-        if (type === 'added') {
-            await client.query(`
-                INSERT INTO changelog (demon_id, demon_name, change_type, old_position, new_position, affected_by_name, list_type)
-                SELECT id, name, 'shifted', position, position + 1, $1, list_type
-                FROM demons WHERE list_type = $3 AND position >= $2`,
-                [name, newPos, listType]
-            );
-        } 
-        else if (type === 'deleted') {
-            await client.query(`
-                INSERT INTO changelog (demon_id, demon_name, change_type, old_position, new_position, affected_by_name, list_type)
-                SELECT id, name, 'shifted', position, position - 1, $1, list_type
-                FROM demons WHERE list_type = $3 AND position > $2`,
-                [name, oldPos, listType]
-            );
-        }
-        else if (type === 'moved') {
-            if (newPos < oldPos) {
-                await client.query(`
-                    INSERT INTO changelog (demon_id, demon_name, change_type, old_position, new_position, affected_by_name, list_type)
-                    SELECT id, name, 'shifted', position, position + 1, $1, list_type
-                    FROM demons WHERE list_type = $4 AND position >= $2 AND position < $3`,
-                    [name, newPos, oldPos, listType]
-                );
-            } else {
-                await client.query(`
-                    INSERT INTO changelog (demon_id, demon_name, change_type, old_position, new_position, affected_by_name, list_type)
-                    SELECT id, name, 'shifted', position, position - 1, $1, list_type
-                    FROM demons WHERE list_type = $4 AND position > $2 AND position <= $3`,
-                    [name, oldPos, newPos, listType]
-                );
-            }
-        }
-
-        await client.query('COMMIT');
-
-    } catch (err) {
-        await client.query('ROLLBACK');
-        console.error("Detailed Logging error:", err);
-    } finally {
-        if (extra.client && typeof client.release === 'function') {
-            client.release();
-        }
-    }
-}
-
 app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
     const { name, author, position, level_id, requirement, showcase_url } = req.body;
-    
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const actorId = req.session.userId;
+    const targetPos = parseInt(position);
 
     const client = await pool.connect();
 
     try {
-        const userRes = await pool.query('SELECT role FROM users WHERE id = $1', [actorId]);
+        const userRes = await client.query('SELECT role FROM users WHERE id = $1', [actorId]);
         const userRole = userRes.rows[0]?.role;
 
-        if (parseInt(position) > 150 && userRole !== 'owner') {
-            return res.status(403).json({ error: "You can't place levels in the Legacy List." });
+        if (targetPos > 150 && userRole !== 'owner') {
+            client.release();
+            return res.status(403).json({ error: "Only the owner can place levels in the Legacy List (> 150)." });
         }
-
-        const neighbors = await client.query(
-            `SELECT name, position FROM demons 
-             WHERE list_type = $3 AND (position = $1 OR position = $2 OR position = 75) 
-             ORDER BY position ASC`,
-            [position - 1, position, list]
-        );
 
         await client.query('BEGIN');
 
+        const boundaries = await client.query(
+            `SELECT position, name FROM demons WHERE list_type = $1 AND position IN (75, 150)`,
+            [list]
+        );
+        const old75 = boundaries.rows.find(r => r.position === 75)?.name;
+        const old150 = boundaries.rows.find(r => r.position === 150)?.name;
+
         await client.query(
             'UPDATE demons SET position = position + 1 WHERE list_type = $2 AND position >= $1', 
-            [position, list]
+            [targetPos, list]
         );
 
         const newLevel = await client.query(
             `INSERT INTO demons (name, author, position, level_id, requirement, list_type, showcase_url) 
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-            [name, author, position, level_id, requirement, list, showcase_url || null]
+            [name, author, targetPos, level_id, requirement || 0, list, showcase_url || null]
         );
-
         const newDemonId = newLevel.rows[0].id;
 
+        await client.query(
+            `INSERT INTO changelog (demon_id, demon_name, change_type, old_position, new_position, list_type) 
+             VALUES ($1, $2, 'added', null, $3, $4)`,
+            [newDemonId, name, targetPos, list]
+        );
+
+        const neighborsRes = await client.query(
+            `SELECT name, position FROM demons WHERE list_type = $1 AND position IN ($2, $3)`,
+            [list, targetPos - 1, targetPos + 1]
+        );
+        
         await client.query('COMMIT');
 
-        await recordChange('added', newDemonId, name, null, position, { client }, list);
-
         if (list === 'primary') {
-            const above = neighbors.rows.find(r => r.position == position - 1)?.name;
-            const below = neighbors.rows.find(r => r.position == position)?.name;
-            const oldSeventyFive = neighbors.rows.find(r => r.position == 75)?.name;
+            const above = neighborsRes.rows.find(r => r.position == targetPos - 1)?.name;
+            const below = neighborsRes.rows.find(r => r.position == targetPos + 1)?.name;
 
-            let msg = `**${name}** has been placed at **#${position}**`;
+            let msg = `**${name}** has been placed at **#${targetPos}**`;
             let context = [];
             
-            if (below) context.push(`above **${below}**`);
             if (above) context.push(`below **${above}**`);
+            if (below) context.push(`above **${below}**`);
 
-            if (context.length > 0) {
-                msg += ", " + context.join(" and ");
-            }
+            if (context.length > 0) msg += ", " + context.join(" and ");
             msg += ` with a list requirement of **${requirement}%**.`;
 
-            if (position <= 75 && oldSeventyFive && oldSeventyFive !== name) {
-                msg += ` This change pushes **${oldSeventyFive}** into the Extended List.`;
+            let pushes = [];
+            if (targetPos <= 75 && old75) pushes.push(`**${old75}** to the Extended List`);
+            if (targetPos <= 150 && old150) pushes.push(`**${old150}** to the Legacy List`);
+            
+            if (pushes.length > 0) {
+                msg += `\n*This pushes ${pushes.join(" and ")}.*`;
             }
 
             sendDiscordNotification(msg);
@@ -720,87 +675,137 @@ app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
 
         res.json({ message: "Demon added" });
     } catch (err) {
-        try { await client.query('ROLLBACK'); } catch(e) {}
+        await client.query('ROLLBACK');
         console.error(err);
-        res.status(500).json({ error: "Shift failed: " + err.message });
+        res.status(500).json({ error: "Add failed: " + err.message });
     } finally {
         client.release();
     }
 });
 
-app.post('/api/admin/delete-demon', isOwner, async (req, res) => {
+app.post('/api/admin/delete-demon', isAdmin, async (req, res) => {
     const { id, position } = req.body;
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const actorId = req.session.userId;
+    const targetPos = parseInt(position);
+
+    const client = await pool.connect();
 
     try {
-        await pool.query('BEGIN');
+        const userRes = await client.query('SELECT role FROM users WHERE id = $1', [actorId]);
+        const userRole = userRes.rows[0]?.role;
 
-        const levelData = await pool.query(
-            'SELECT name, list_type FROM demons WHERE id = $1', 
-            [id]
+        if (targetPos > 150 && userRole !== 'owner') {
+            client.release();
+            return res.status(403).json({ error: "Can't delete levels from the Legacy List." });
+        }
+
+        await client.query('BEGIN');
+
+        const boundaries = await client.query(
+            `SELECT position, name FROM demons WHERE list_type = $1 AND position IN (76, 151)`,
+            [list]
         );
-        
+        const old76 = boundaries.rows.find(r => r.position === 76)?.name;
+        const old151 = boundaries.rows.find(r => r.position === 151)?.name;
+
+        const levelData = await client.query('SELECT name, list_type FROM demons WHERE id = $1', [id]);
         if (levelData.rows.length === 0) {
-            await pool.query('ROLLBACK');
+            await client.query('ROLLBACK');
+            client.release();
             return res.status(404).json({ error: "Level not found" });
         }
 
         const { name: levelName, list_type } = levelData.rows[0];
 
         if (list_type !== list) {
-            await pool.query('ROLLBACK');
+            await client.query('ROLLBACK');
+            client.release();
             return res.status(400).json({ error: "This level does not belong to the active list layout." });
         }
 
-        await pool.query('DELETE FROM demons WHERE id = $1', [id]);
+        await client.query('DELETE FROM records WHERE demon_id = $1', [id]);
         
-        await pool.query(
+        await client.query('DELETE FROM demons WHERE id = $1', [id]);
+        
+        await client.query(
             'UPDATE demons SET position = position - 1 WHERE list_type = $2 AND position > $1', 
-            [position, list]
+            [targetPos, list]
+        );
+
+        await client.query(
+            `INSERT INTO changelog (demon_id, demon_name, change_type, old_position, new_position, list_type) 
+             VALUES ($1, $2, 'deleted', $3, null, $4)`,
+            [id, levelName, targetPos, list]
         );
         
-        await pool.query('COMMIT');
+        await client.query('COMMIT');
 
-        if (levelName) {
-            recordChange('deleted', id, levelName, position, null, list);
+        if (list === 'primary') {
+            let msg = `**${levelName}** has been removed from the list.`;
+
+            let pushes = [];
+            if (targetPos <= 75 && old76) pushes.push(`**${old76}** back to the Main List`);
+            if (targetPos <= 150 && old151) pushes.push(`**${old151}** back to the Extended List`);
             
-            if (list === 'primary') {
-                sendDiscordNotification(`**${levelName}** has been removed from the list.`);
+            if (pushes.length > 0) {
+                msg += `\n*This pushes ${pushes.join(" and ")}.*`;
             }
+
+            sendDiscordNotification(msg);
         }
 
         res.json({ message: "Demon removed" });
     } catch (err) {
-        await pool.query('ROLLBACK');
+        await client.query('ROLLBACK');
         console.error(err);
         res.status(500).json({ error: "Delete failed" });
+    } finally {
+        client.release();
     }
 });
 
 app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
     const { id, oldPosition, newPosition } = req.body;
+    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const actorId = req.session.userId;
 
-    if (!id || !oldPosition || !newPosition) {
+    const oldPos = parseInt(oldPosition);
+    const newPos = parseInt(newPosition);
+
+    if (!id || !oldPos || !newPos) {
         return res.status(400).json({ error: "Missing data" });
     }
-
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    if (oldPos === newPos) {
+        return res.status(400).json({ error: "Old position and new position are the same." });
+    }
 
     const client = await pool.connect();
+    
     try {
-        const userRes = await pool.query('SELECT role FROM users WHERE id = $1', [actorId]);
+        const userRes = await client.query('SELECT role FROM users WHERE id = $1', [actorId]);
         const userRole = userRes.rows[0]?.role;
 
-        if ((parseInt(oldPosition) > 150 || parseInt(newPosition) > 150) && userRole !== 'owner') {
-            return res.status(403).json({ error: "Level is on the legacy list." });
+        if ((oldPos > 150 || newPos > 150) && userRole !== 'owner') {
+            client.release();
+            return res.status(403).json({ error: "Only the owner can manipulate levels touching the Legacy List (> 150)." });
         }
 
         await client.query('BEGIN');
 
+        const boundaries = await client.query(
+            `SELECT position, name FROM demons WHERE list_type = $1 AND position IN (75, 76, 150, 151)`,
+            [list]
+        );
+        const old75 = boundaries.rows.find(r => r.position === 75)?.name;
+        const old76 = boundaries.rows.find(r => r.position === 76)?.name;
+        const old150 = boundaries.rows.find(r => r.position === 150)?.name;
+        const old151 = boundaries.rows.find(r => r.position === 151)?.name;
+
         const levelRes = await client.query('SELECT name, list_type FROM demons WHERE id = $1', [id]);
-        
         if (levelRes.rows.length === 0) {
             await client.query('ROLLBACK');
+            client.release();
             return res.status(404).json({ error: "Level not found" });
         }
 
@@ -808,46 +813,63 @@ app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
 
         if (list_type !== list) {
             await client.query('ROLLBACK');
+            client.release();
             return res.status(400).json({ error: "This level does not belong to the active list layout." });
         }
 
-        const neighbors = await client.query(
-            `SELECT name, position FROM demons 
-             WHERE list_type = $3 AND (position = $1 OR position = $2)`,
-            [newPosition - 1, newPosition, list]
-        );
-
-        if (newPosition < oldPosition) {
+        if (newPos < oldPos) {
             await client.query(
                 'UPDATE demons SET position = position + 1 WHERE list_type = $3 AND position >= $1 AND position < $2',
-                [newPosition, oldPosition, list]
+                [newPos, oldPos, list]
             );
         } else {
             await client.query(
                 'UPDATE demons SET position = position - 1 WHERE list_type = $3 AND position > $1 AND position <= $2',
-                [oldPosition, newPosition, list]
+                [oldPos, newPos, list]
             );
         }
 
-        await client.query('UPDATE demons SET position = $1 WHERE id = $2', [newPosition, id]);
+        await client.query('UPDATE demons SET position = $1 WHERE id = $2', [newPos, id]);
+        
+        await client.query(
+            `INSERT INTO changelog (demon_id, demon_name, change_type, old_position, new_position, list_type) 
+             VALUES ($1, $2, 'moved', $3, $4, $5)`,
+            [id, levelName, oldPos, newPos, list]
+        );
+
+        const neighborsRes = await client.query(
+            `SELECT name, position FROM demons WHERE list_type = $1 AND position IN ($2, $3)`,
+            [list, newPos - 1, newPos + 1]
+        );
+
         await client.query('COMMIT');
 
-        const above = neighbors.rows.find(r => r.position == newPosition - 1)?.name;
-        const below = neighbors.rows.find(r => r.position == newPosition)?.name;
-        
-        recordChange('moved', id, levelName, oldPosition, newPosition, { above, below }, list);
-
         if (list === 'primary') {
-            const action = newPosition < oldPosition ? "raised" : "lowered";
-            let msg = `**${levelName}** has been **${action}** to **#${newPosition}**`;
+            const above = neighborsRes.rows.find(r => r.position == newPos - 1)?.name;
+            const below = neighborsRes.rows.find(r => r.position == newPos + 1)?.name;
+            
+            const action = newPos < oldPos ? "raised" : "lowered";
+            let msg = `**${levelName}** has been **${action}** to **#${newPos}**`;
+            
             let context = [];
-            if (below) context.push(`above **${below}**`);
             if (above) context.push(`below **${above}**`);
+            if (below) context.push(`above **${below}**`);
 
-            if (context.length > 0) {
-                msg += ", " + context.join(" and ");
-            }
+            if (context.length > 0) msg += ", " + context.join(" and ");
             msg += ".";
+
+            let pushes = [];
+            if (newPos < oldPos) { 
+                if (newPos <= 75 && oldPos > 75 && old75) pushes.push(`**${old75}** to the Extended List`);
+                if (newPos <= 150 && oldPos > 150 && old150) pushes.push(`**${old150}** to the Legacy List`);
+            } else if (newPos > oldPos) { 
+                if (oldPos <= 75 && newPos >= 76 && old76) pushes.push(`**${old76}** back to the Main List`);
+                if (oldPos <= 150 && newPos >= 151 && old151) pushes.push(`**${old151}** back to the Extended List`);
+            }
+
+            if (pushes.length > 0) {
+                msg += `\n*This pushes ${pushes.join(" and ")}.*`;
+            }
 
             sendDiscordNotification(msg);
         }
@@ -856,7 +878,7 @@ app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK');
         console.error(err);
-        res.status(500).json({ error: "Database error" });
+        res.status(500).json({ error: "Database error during move execution." });
     } finally {
         client.release();
     }
