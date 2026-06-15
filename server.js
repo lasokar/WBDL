@@ -1382,15 +1382,140 @@ app.post('/api/notifications/read', async (req, res) => {
 });
 
 app.get('/api/demons/:id/history', async (req, res) => {
+    const demonId = parseInt(req.params.id, 10);
+    const client = await pool.connect();
+
     try {
-        const history = await pool.query(
-            'SELECT * FROM changelog WHERE demon_id = $1 ORDER BY created_at DESC',
-            [req.params.id]
+        const currentRes = await client.query(
+            'SELECT position, list_type FROM demons WHERE id = $1',
+            [demonId]
         );
-        res.json(history.rows);
+
+        if (currentRes.rows.length === 0) {
+            const lifeCheck = await client.query(
+                "SELECT old_position, list_type FROM changelog WHERE demon_id = $1 AND change_type = 'deleted' LIMIT 1",
+                [demonId]
+            );
+
+            if (lifeCheck.rows.length === 0) {
+                return res.status(404).json({ error: "Demon not found in list or records" });
+            }
+
+            return res.json([]);
+        }
+
+        const { position: currentActualPosRaw, list_type: listType } = currentRes.rows[0];
+        const currentActualPos = parseInt(currentActualPosRaw, 10);
+
+        const changelogRes = await client.query(
+            `SELECT id, demon_id, demon_name, change_type, old_position, new_position, created_at 
+             FROM changelog 
+             WHERE list_type = $1 
+             ORDER BY created_at DESC, id DESC`,
+            [listType]
+        );
+
+        const virtualHistory = [];
+        let simulatedPos = currentActualPos;
+
+        for (const log of changelogRes.rows) {
+            let generatedLog = null;
+
+            if (log.demon_id === demonId) {
+                if (log.change_type === 'added') {
+                    generatedLog = {
+                        created_at: log.created_at,
+                        change_type: 'added',
+                        new_position: simulatedPos,
+                        diff: 0,
+                        reason: "Placed on the list"
+                    };
+                    virtualHistory.push(generatedLog);
+                    break;
+                } else if (log.change_type === 'moved') {
+                    const oldPos = parseInt(log.old_position, 10);
+                    const newPos = parseInt(log.new_position, 10);
+
+                    const diff = oldPos - newPos;
+
+                    generatedLog = {
+                        created_at: log.created_at,
+                        change_type: 'moved',
+                        new_position: newPos,
+                        diff: diff,
+                        reason: diff > 0 ? "Raised" : "Lowered"
+                    };
+
+                    virtualHistory.push(generatedLog);
+
+                    simulatedPos = oldPos;
+                    continue;
+                }
+            }
+
+            const logOldPos = log.old_position ? parseInt(log.old_position, 10) : null;
+            const logNewPos = log.new_position ? parseInt(log.new_position, 10) : null;
+
+            if (log.change_type === 'added') {
+                if (logNewPos <= simulatedPos) {
+                    const diff = -1;
+                    generatedLog = {
+                        created_at: log.created_at,
+                        change_type: 'indirect',
+                        new_position: simulatedPos,
+                        diff: diff,
+                        reason: `**${log.demon_name}** was added above`
+                    };
+                    virtualHistory.push(generatedLog);
+                    simulatedPos -= 1;
+                }
+            } else if (log.change_type === 'deleted') {
+                if (logOldPos <= simulatedPos) {
+                    const diff = 1;
+                    generatedLog = {
+                        created_at: log.created_at,
+                        change_type: 'indirect',
+                        new_position: simulatedPos,
+                        diff: diff,
+                        reason: `**${log.demon_name}** was removed above`
+                    };
+                    virtualHistory.push(generatedLog);
+                    simulatedPos += 1;
+                }
+            } else if (log.change_type === 'moved') {
+                let operationalPos = simulatedPos;
+                if (logNewPos <= operationalPos) {
+                    operationalPos -= 1;
+                }
+                if (logOldPos <= operationalPos) {
+                    operationalPos += 1;
+                }
+
+                const positionShift = operationalPos - simulatedPos;
+
+                if (positionShift !== 0) {
+                    generatedLog = {
+                        created_at: log.created_at,
+                        change_type: 'indirect',
+                        new_position: simulatedPos,
+                        diff: positionShift,
+                        reason: positionShift > 0
+                            ? `**${log.demon_name}** was moved down past this level`
+                            : `**${log.demon_name}** was raised past this level`
+                    };
+                    virtualHistory.push(generatedLog);
+                }
+
+                simulatedPos = operationalPos;
+            }
+        }
+
+        res.json(virtualHistory);
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: "Error fetching demon history" });
+        res.status(500).json({ error: "Error reconstructing dynamic history" });
+    } finally {
+        client.release();
     }
 });
 

@@ -260,43 +260,30 @@
                     const date = new Date(log.created_at).toLocaleDateString(undefined, {
                         month: 'short', day: 'numeric', year: 'numeric'
                     });
+
                     let changeStr = "-";
-                    let reason = "Moved";
-                    let rowClass = "";
+                    let rowClass = "row-neutral";
 
-                    const diff = log.old_position - log.new_position;
-
-                    if (log.change_type === 'added') {
-                        reason = "Added to list";
-                        rowClass = "row-added";
-                    } else if (log.change_type === 'shifted') {
-                        if (diff < 0) {
-                            changeStr = `-${Math.abs(diff)}`;
-                            reason = `<span class="b">${log.affected_by_name}</span> was added above`;
-                            rowClass = "row-down";
-                        } else {
-                            changeStr = `+${diff}`;
-                            reason = `<span class="b">${log.affected_by_name}</span> was moved down past this demon`;
-                            rowClass = "row-up";
-                        }
-                    } else if (log.change_type === 'moved') {
-                        if (diff < 0) {
-                            changeStr = `-${Math.abs(diff)}`;
-                            reason = "Lowered";
-                            rowClass = "row-down";
-                        } else {
-                            changeStr = `+${diff}`;
-                            reason = "Raised";
-                            rowClass = "row-up";
-                        }
+                    if (log.diff > 0) {
+                        changeStr = `+${log.diff}`;
+                        rowClass = "row-up";
+                    } else if (log.diff < 0) {
+                        changeStr = `${log.diff}`; 
+                        rowClass = "row-down";
+                    } else if (log.change_type === 'added') {
+                        changeStr = "-";
                     }
+
+                    const formattedReason = log.reason 
+                        ? log.reason.replace(/\*\*(.*?)\*\*/g, '<span class="b">$1</span>') 
+                        : '';
 
                     return `
                         <tr class="${rowClass}">
                             <td>${date}</td>
                             <td style="font-weight:bold;">${changeStr}</td>
-                            <td>${log.new_position}</td>
-                            <td>${reason}</td>
+                            <td>#${log.new_position}</td>
+                            <td>${formattedReason}</td>
                         </tr>
                     `;
                 }).join('');
