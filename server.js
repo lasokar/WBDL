@@ -668,7 +668,7 @@ app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
             if (targetPos <= 150 && old150) pushes.push(`**${old150}** to the Legacy List`);
             
             if (pushes.length > 0) {
-                msg += `\nThis pushes ${pushes.join(" and ")}.`;
+                msg += `\nThis change pushes ${pushes.join(" and ")}.`;
             }
 
             sendDiscordNotification(msg);
@@ -750,7 +750,7 @@ app.post('/api/admin/delete-demon', isAdmin, async (req, res) => {
             if (targetPos <= 150 && old151) pushes.push(`**${old151}** back to the Extended List`);
             
             if (pushes.length > 0) {
-                msg += `\nThis pushes ${pushes.join(" and ")}.`;
+                msg += `\nThis change pushes ${pushes.join(" and ")}.`;
             }
 
             sendDiscordNotification(msg);
@@ -869,7 +869,7 @@ app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
             }
 
             if (pushes.length > 0) {
-                msg += `\nThis pushes ${pushes.join(" and ")}.`;
+                msg += `\nThis change pushes ${pushes.join(" and ")}.`;
             }
 
             sendDiscordNotification(msg);
