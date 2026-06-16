@@ -521,7 +521,10 @@
 
         function getHardestRecord(records) {
             const valid = Array.isArray(records)
-                ? records.filter(r => Number.isFinite(parseInt(r.position, 10)))
+                ? records.filter(r => 
+                    Number.isFinite(parseInt(r.position, 10)) && 
+                    parseInt(r.percentage, 10) === 100
+                )
                 : [];
             if (valid.length === 0) return null;
 
@@ -688,6 +691,7 @@
                 if (isImpossibleList) {
                     document.getElementById('completed-section').style.display = 'none';
                     document.getElementById('completions-stat').style.display = 'none';
+                    document.getElementById('hardest-stat').style.display = 'none';
                 }
 
                 const lbTag = document.getElementById('leaderboard-tag');
