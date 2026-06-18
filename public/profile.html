@@ -818,11 +818,9 @@
                 if (hardestRecord) {
                     hardestButton.innerText = hardestRecord.name;
                     hardestButton.disabled = false;
-                    hardestButton.title = "View completion details";
                 } else {
                     hardestButton.innerText = 'N/A';
                     hardestButton.disabled = true;
-                    hardestButton.removeAttribute('title');
                 }
 
                 const completed = records
