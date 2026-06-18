@@ -72,6 +72,27 @@
             font-family: var(--font-display);
         }
 
+        .hardest-link {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text);
+            font: inherit;
+            font-size: 1.5em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.15s, opacity 0.15s;
+        }
+
+        .hardest-link:hover:not(:disabled) {
+            color: var(--accent);
+        }
+
+        .hardest-link:disabled {
+            cursor: default;
+            opacity: 1;
+        }
+
         .back-link {
             display: inline-block;
             margin-top: 20px;
@@ -307,12 +328,30 @@
         }
 
         .completion-modal {
+            position: relative;
             width: min(100%, 460px);
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
             padding: 22px;
+        }
+
+        .completion-modal-close-x {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5em;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .completion-modal-close-x:hover {
+            color: #ff4444;
         }
 
         .completion-modal h4 {
@@ -349,7 +388,7 @@
         .completion-modal .modal-actions {
             display: flex;
             gap: 10px;
-            justify-content: flex-end;
+            justify-content: center;
             flex-wrap: wrap;
             margin-top: 18px;
         }
@@ -376,7 +415,7 @@
         }
 
         .completion-modal .modal-close {
-            margin-right: auto;
+            margin-right: 0;
         }
 
         .clickable-completion {
@@ -444,7 +483,7 @@
                     </div>
                     <div class="stat-item" id="hardest-stat">
                         <span class="stat-label">Hardest</span>
-                        <span id="current-hardest" style="font-size: 1.5em; font-weight: bold;">N/A</span>
+                        <button type="button" id="current-hardest" class="hardest-link" disabled>N/A</button>
                     </div>
                 </div>
             </div>
@@ -474,9 +513,10 @@
 
     <div class="completion-modal-overlay" id="completion-modal-overlay" aria-hidden="true">
         <div class="completion-modal" role="dialog" aria-modal="true" aria-labelledby="completion-modal-title">
+            <button class="completion-modal-close-x" type="button" id="completion-modal-close" aria-label="Close">&times;</button>
             <h4 id="completion-modal-title">Level</h4>
             <div class="modal-row">
-                <span class="modal-key">Status</span>
+                <span class="modal-key">Completion Status</span>
                 <span class="modal-value" id="completion-modal-status">N/A</span>
             </div>
             <div class="modal-row">
@@ -488,7 +528,7 @@
                 <span class="modal-value" id="completion-modal-points">N/A</span>
             </div>
             <div class="modal-actions">
-                <button class="modal-btn modal-close" type="button" id="completion-modal-close">Close</button>
+                <a class="modal-btn" id="completion-modal-demon" href="#" target="_blank" rel="noopener">Level Page</a>
                 <a class="modal-btn" id="completion-modal-video" href="#" target="_blank" rel="noopener">Watch</a>
             </div>
         </div>
@@ -503,6 +543,7 @@
         }
 
         let completedRecordsCache = [];
+        let hardestRecordCache = null;
 
         function escapeHtml(str) {
             return String(str ?? '')
@@ -602,13 +643,22 @@
             return `#${num}, ${tier}`;
         }
 
-        function openCompletionModal({ name, placement, status, videoUrl, points }) {
+        function openCompletionModal({ name, placement, status, videoUrl, points, demonUrl }) {
             const overlay = document.getElementById('completion-modal-overlay');
             document.getElementById('completion-modal-title').innerText = name || 'Level';
             document.getElementById('completion-modal-status').innerText = status || 'Unknown';
             document.getElementById('completion-modal-placement').innerText = placement || 'N/A';
             document.getElementById('completion-modal-points').innerText =
                 (points !== undefined && points !== null && points !== '') ? points : 'N/A';
+
+            const demonBtn = document.getElementById('completion-modal-demon');
+            if (demonUrl) {
+                demonBtn.href = demonUrl;
+                demonBtn.style.display = 'inline-flex';
+            } else {
+                demonBtn.removeAttribute('href');
+                demonBtn.style.display = 'none';
+            }
 
             const videoBtn = document.getElementById('completion-modal-video');
             if (videoUrl) {
@@ -667,7 +717,17 @@
                 placement: getPlacementLabel(record.position),
                 status: getCompletionStatusLabel(record.completion_status),
                 videoUrl: record.video_url,
-                points: record.points
+                points: record.points,
+                demonUrl: record.demon_id ? `/demon/${record.demon_id}` : ''
+            });
+        }
+
+        const hardestEl = document.getElementById('current-hardest');
+        if (hardestEl) {
+            hardestEl.addEventListener('click', () => {
+                if (hardestRecordCache) {
+                    openCompletedLevelModal(hardestRecordCache);
+                }
             });
         }
 
@@ -752,8 +812,18 @@
 
                 const records = Array.isArray(data.records) ? data.records : [];
                 const hardestRecord = getHardestRecord(records);
-                const hardestLabel = hardestRecord ? hardestRecord.name : 'N/A';
-                document.getElementById('current-hardest').innerText = hardestLabel;
+                hardestRecordCache = hardestRecord;
+
+                const hardestButton = document.getElementById('current-hardest');
+                if (hardestRecord) {
+                    hardestButton.innerText = hardestRecord.name;
+                    hardestButton.disabled = false;
+                    hardestButton.title = "View completion details";
+                } else {
+                    hardestButton.innerText = 'N/A';
+                    hardestButton.disabled = true;
+                    hardestButton.removeAttribute('title');
+                }
 
                 const completed = records
                     .filter(r => parseInt(r.percentage, 10) === 100)
