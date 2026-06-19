@@ -57,12 +57,24 @@ const cleanProfileText = (value, maxLength) => {
     return text.length > maxLength ? text.slice(0, maxLength) : text;
 };
 
+const readProfileInt = (value, fallback) => {
+    const parsed = parseInt(value, 10);
+    return Number.isNaN(parsed) ? fallback : parsed;
+};
+
 const cleanProfileIcon = (icon = {}) => {
     const type = PROFILE_ICON_TYPES.has(icon.type) ? icon.type : 'cube';
-    const id = Math.min(999, Math.max(1, parseInt(icon.id, 10) || 1));
-    const color1 = Math.min(999, Math.max(0, parseInt(icon.color1, 10) || 12));
-    const color2 = Math.min(999, Math.max(0, parseInt(icon.color2, 10) || 3));
-    return { type, id, color1, color2 };
+    const parsedId = parseInt(icon.id, 10);
+    const parsedColor1 = parseInt(icon.color1, 10);
+    const parsedColor2 = parseInt(icon.color2, 10);
+    const parsedGlow = parseInt(icon.glow, 10);
+
+    const id = Number.isNaN(parsedId) ? 1 : Math.min(999, Math.max(1, parsedId));
+    const color1 = Number.isNaN(parsedColor1) ? 12 : Math.min(999, Math.max(0, parsedColor1));
+    const color2 = Number.isNaN(parsedColor2) ? 3 : Math.min(999, Math.max(0, parsedColor2));
+    const glow = Number.isNaN(parsedGlow) ? -1 : Math.min(999, Math.max(-1, parsedGlow));
+
+    return { type, id, color1, color2, glow };
 };
 
 const serializeProfileUser = (user) => ({
@@ -80,9 +92,10 @@ const serializeProfileUser = (user) => ({
     },
     icon: {
         type: user.icon_type || 'cube',
-        id: parseInt(user.icon_id, 10) || 1,
-        color1: parseInt(user.color1, 10) || 12,
-        color2: parseInt(user.color2, 10) || 3,
+        id: readProfileInt(user.icon_id, 1),
+        color1: readProfileInt(user.color1, 12),
+        color2: readProfileInt(user.color2, 3),
+        glow: readProfileInt(user.glow, -1),
     },
 });
 
@@ -377,7 +390,7 @@ app.get('/api/me', async (req, res) => {
     if (req.session.userId) {
         try {
             const user = await pool.query(
-                'SELECT username, role, display_name, icon_type, icon_id, color1, color2 FROM users WHERE id = $1', 
+                'SELECT username, role, display_name, icon_type, icon_id, color1, color2, glow FROM users WHERE id = $1', 
                 [req.session.userId]
             );
 
@@ -390,9 +403,10 @@ app.get('/api/me', async (req, res) => {
                     displayName: userData.display_name || '',
                     icon: {
                         type: userData.icon_type || 'cube',
-                        id: parseInt(userData.icon_id, 10) || 1,
-                        color1: parseInt(userData.color1, 10) || 12,
-                        color2: parseInt(userData.color2, 10) || 3,
+                        id: readProfileInt(userData.icon_id, 1),
+                        color1: readProfileInt(userData.color1, 12),
+                        color2: readProfileInt(userData.color2, 3),
+                        glow: readProfileInt(userData.glow, -1),
                     },
                 });
             } else {
@@ -1102,7 +1116,7 @@ app.get('/api/profile/:username', async (req, res) => {
             `SELECT id, username, created_at, role,
                     display_name, bio, pronouns, country,
                     social_youtube, social_twitter, social_twitch, social_discord, social_reddit, social_gdbrowser,
-                    icon_type, icon_id, color1, color2
+                    icon_type, icon_id, color1, color2, glow
              FROM users WHERE username = $1`, 
             [username]
         );
@@ -1371,7 +1385,7 @@ app.get('/api/settings/profile', async (req, res) => {
             SELECT username,
                    display_name, bio, pronouns, country,
                    social_youtube, social_twitter, social_twitch, social_discord, social_reddit, social_gdbrowser,
-                   icon_type, icon_id, color1, color2
+                   icon_type, icon_id, color1, color2, glow
             FROM users
             WHERE id = $1
         `, [req.session.userId]);
@@ -1410,6 +1424,7 @@ app.post('/api/settings/profile', async (req, res) => {
         iconId: icon.id,
         color1: icon.color1,
         color2: icon.color2,
+        glow: icon.glow,
     };
 
     try {
@@ -1428,8 +1443,9 @@ app.post('/api/settings/profile', async (req, res) => {
                 icon_type = $11,
                 icon_id = $12,
                 color1 = $13,
-                color2 = $14
-            WHERE id = $15
+                color2 = $14,
+                glow = $15
+            WHERE id = $16
         `, [
             profile.displayName,
             profile.bio,
@@ -1445,6 +1461,7 @@ app.post('/api/settings/profile', async (req, res) => {
             profile.iconId,
             profile.color1,
             profile.color2,
+            profile.glow,
             req.session.userId,
         ]);
 

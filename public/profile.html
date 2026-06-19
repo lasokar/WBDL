@@ -729,6 +729,7 @@
                         <select id="completed-sort" class="completed-sort-select" onchange="setCompletedSort(this.value)">
                             <option value="recent" selected>Most recent</option>
                             <option value="difficult">Most difficult</option>
+                            <option value="alphabetical">Alphabetical</option>
                         </select>
                     </div>
                 </div>
@@ -959,7 +960,7 @@
                 return canvas;
             }
 
-            async function renderIcon({ type = 'cube', id = 1, color1 = 12, color2 = 3 } = {}, options = {}) {
+            async function renderIcon({ type = 'cube', id = 1, color1 = 12, color2 = 3, glow = -1 } = {}, options = {}) {
                 const category = getCategory(type);
                 const iconNum = Math.max(1, parseInt(id, 10) || 1);
                 const numStr = String(iconNum).padStart(2, '0');
@@ -968,9 +969,10 @@
                 const assetName = `${baseName}-${assetQuality}`;
                 const iconPath = `/assets/icons/${category.folder}/${assetName}`;
 
-                const [mainColor, secondColor] = await Promise.all([
+                const [mainColor, secondColor, glowColor] = await Promise.all([
                     getColor(color1, { r: 0, g: 230, b: 118 }),
                     getColor(color2, { r: 255, g: 255, b: 255 }),
+                    getColor(glow, { r: 255, g: 255, b: 255 }),
                 ]);
 
                 let frames;
@@ -994,6 +996,10 @@
                 const renderPrefix = getAtlasRenderPrefix(frameKeys, baseName);
                 if (!renderPrefix) return makeFallbackCanvas(String(iconNum));
                 const baseLen = renderPrefix.length + 1;
+
+                const glowLayerKeys = frameKeys
+                    .filter(key => key.startsWith(`${renderPrefix}_`) && key.endsWith('_001.png') && key.includes('_glow_'))
+                    .sort(compareAtlasLayers);
 
                 const layerKeys = frameKeys
                     .filter(key => key.startsWith(`${renderPrefix}_`) && key.endsWith('_001.png') && !key.includes('_glow_'))
@@ -1137,6 +1143,13 @@
                             ctx.restore();
                         }
 
+                        if (Number(glow) >= 0) {
+                            for (const sprite of spriteList) {
+                                const mainName = actualTex(sprite.texture);
+                                drawTex(mainName.replace('_001.png', '_glow_001.png'), sprite, glowColor);
+                            }
+                        }
+
                         for (const sprite of spriteList) {
                             const mainName = actualTex(sprite.texture);
                             drawTex(mainName.replace('_001.png', '_2_001.png'), sprite, secondColor);
@@ -1158,7 +1171,7 @@
 
                 let canvW = 1;
                 let canvH = 1;
-                for (const key of layerKeys) {
+                for (const key of [...layerKeys, ...(Number(glow) >= 0 ? glowLayerKeys : [])]) {
                     const frame = normalizeAtlasFrame(frames[key]);
                     if (!frame) continue;
                     const [ssw, ssh] = parseGDCoord(frame.spriteSourceSize);
@@ -1179,9 +1192,9 @@
                 ctx.imageSmoothingQuality = 'high';
                 ctx.scale(renderScale, renderScale);
 
-                for (const key of layerKeys) {
+                function drawAtlasLayer(key, tintColor = null) {
                     const frame = normalizeAtlasFrame(frames[key]);
-                    if (!frame) continue;
+                    if (!frame) return;
 
                     const [rx, ry, rw, rh] = parseGDCoord(frame.textureRect);
                     const [ox = 0, oy = 0] = parseGDCoord(frame.spriteOffset);
@@ -1203,15 +1216,27 @@
                         tctx.drawImage(texture, rx, ry, rw, rh, 0, 0, rw, rh);
                     }
 
-                    const part = key.slice(baseLen, -'_001.png'.length);
-                    const isSecondary = /(?:^|_)0*2$/.test(part);
-                    const isExtra = /extra/.test(part);
-                    if (!isExtra) tintCanvas(tmp, isSecondary ? secondColor : mainColor, true);
+                    if (tintColor) {
+                        tintCanvas(tmp, tintColor, true);
+                    }
 
                     const ufoYOffset = category.key === 'ufo' ? 10 : 0;
                     const dx = logicalW / 2 + ox - rw / 2;
                     const dy = logicalH / 2 - oy - rh / 2 + ufoYOffset;
                     ctx.drawImage(tmp, 0, 0, rw, rh, dx, dy, rw, rh);
+                }
+
+                if (Number(glow) >= 0) {
+                    for (const key of glowLayerKeys) {
+                        drawAtlasLayer(key, glowColor);
+                    }
+                }
+
+                for (const key of layerKeys) {
+                    const part = key.slice(baseLen, -'_001.png'.length);
+                    const isSecondary = /(?:^|_)0*2$/.test(part);
+                    const isExtra = /extra/.test(part);
+                    drawAtlasLayer(key, isExtra ? null : (isSecondary ? secondColor : mainColor));
                 }
 
                 return canvas;
@@ -1403,7 +1428,7 @@
             const host = document.getElementById('profile-icon-canvas-host');
             WBDLIconRenderer.renderInto(
                 host,
-                data.icon || { type: 'cube', id: 1, color1: 12, color2: 3 },
+                data.icon || { type: 'cube', id: 1, color1: 12, color2: 3, glow: -1 },
                 { quality: 'uhd' }
             );
         }
@@ -1578,7 +1603,7 @@
         }
 
         function setCompletedSort(mode) {
-            completedSortMode = mode === 'difficult' ? 'difficult' : 'recent';
+            completedSortMode = ['recent', 'difficult', 'alphabetical'].includes(mode) ? mode : 'recent';
             renderCompletedLevels();
         }
 
@@ -1587,6 +1612,14 @@
 
             if (completedSortMode === 'difficult') {
                 return list;
+            }
+
+            if (completedSortMode === 'alphabetical') {
+                return list.sort((a, b) => {
+                    const aName = String(a.name || '').toLowerCase();
+                    const bName = String(b.name || '').toLowerCase();
+                    return aName.localeCompare(bName, undefined, { sensitivity: 'base' });
+                });
             }
 
             return list.sort((a, b) => {
