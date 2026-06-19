@@ -67,6 +67,42 @@
             background: var(--accent-hover);
         }
 
+        .verifier-row {
+            margin: -8px 0 24px;
+            text-align: center;
+            color: var(--text);
+            font-weight: 400;
+            font-size: 1.2em;
+        }
+
+        .verifier-row a {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .verifier-row a:hover {
+            color: var(--accent);
+        }
+
+        .not-found-card {
+            text-align: center;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 46px 24px;
+        }
+
+        .not-found-card h1 {
+            color: #ff4444;
+            margin: 0 0 12px;
+            font-size: 2.2em;
+        }
+
+        .not-found-card p {
+            color: var(--text-muted);
+        }
+
         .record-row {
             display: flex; justify-content: space-between; align-items: center;
             padding: 15px 18px; background: var(--surface); margin-bottom: 8px; border-radius: var(--radius-sm);
@@ -144,6 +180,7 @@
         </div>
 
         <div class="video-container" id="video-container"></div>
+        <div id="verifier-container"></div>
 
         <div class="tabs">
             <button class="tab-btn active" onclick="openTab(event, 'records')">Records</button>
@@ -170,12 +207,40 @@
         </div>
     </main>
 
+    <main class="page-content" id="not-found-content" style="display:none;">
+        <div class="not-found-card">
+            <h1>Where are you going?</h1>
+            <p>The level you are looking for does not exist or has been removed.</p>
+        </div>
+    </main>
+
     <script src="/nav.js"></script>
     <script>
         const isImpossibleList = window.location.hostname.includes('impossible');
 
         if (isImpossibleList) {
             document.body.classList.add('impossible-list');
+        }
+
+        function escapeHtml(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function getProfileUrl(username) {
+            return `/profile?user=${encodeURIComponent(username ?? '')}`;
+        }
+
+        function levelNotFound() {
+            const mainContent = document.getElementById('main-content');
+            const notFoundContent = document.getElementById('not-found-content');
+
+            if (mainContent) mainContent.style.display = 'none';
+            if (notFoundContent) notFoundContent.style.display = 'block';
         }
 
         function openTab(evt, tabId) {
@@ -197,14 +262,21 @@
             const pathSegments = window.location.pathname.split('/');
             const dbKey = pathSegments[pathSegments.length - 1]; 
 
-            if (!dbKey || isNaN(dbKey)) return window.location.href = "/";
+            if (!dbKey || isNaN(dbKey)) {
+                levelNotFound();
+                return;
+            }
 
             const res = await fetch(`/api/demons/${dbKey}`);
-            if (!res.ok) return document.body.innerHTML = "<h1>Level not found</h1>";
-            
+            if (!res.ok) {
+                levelNotFound();
+                return;
+            }
+
             const data = await res.json();
+            document.getElementById('not-found-content').style.display = 'none';
             document.getElementById('main-content').style.display = 'block';
-            
+
             const isLegacy = data.position > 150;
             document.getElementById('demon-name').innerText = isLegacy ? data.name : `#${data.position} - ${data.name}`;
             document.getElementById('legacy-warning').style.display = isLegacy ? 'block' : 'none';
@@ -219,24 +291,48 @@
             }
 
             const list = document.getElementById('records-list');
-            list.innerHTML = data.records.map(r => {
-                let percentageColor = "";
-                if (r.percentage === 100) {
-                    percentageColor = isImpossibleList ? "#ff4444" : "#00e676";
-                } else {
-                    percentageColor = isImpossibleList ? "#ff6666" : "#ffaa00";
+            const verifierContainer = document.getElementById('verifier-container');
+            const records = Array.isArray(data.records) ? data.records : [];
+
+            verifierContainer.innerHTML = "";
+
+            if (records.length === 0) {
+                list.innerHTML = "<p style='color:#666; padding: 15px;'>No records yet.</p>";
+            } else {
+                let normalRecords = records;
+
+                if (!isImpossibleList) {
+                    const verifier = records[0];
+                    normalRecords = records.slice(1);
+
+                    verifierContainer.innerHTML = `
+                        <div class="verifier-row">
+                            <span>Verifier: <a href="${getProfileUrl(verifier.username)}">${escapeHtml(verifier.username)}</a></span>
+                        </div>
+                    `;
                 }
 
-                return `
-                    <div class="record-row">
-                        <span>
-                            <a href="/profile?user=${r.username}">${r.username}</a> 
-                            <span style="color:${percentageColor}"> - ${r.percentage}%</span>
-                        </span>
-                        <a href="${r.video_url}" target="_blank" class="proof">Watch</a>
-                    </div>
-                `;
-            }).join('') || "<p style='color:#666; padding: 15px;'>No records yet.</p>";
+                const recordsHtml = normalRecords.map(r => {
+                    let percentageColor = "";
+                    if (r.percentage === 100) {
+                        percentageColor = isImpossibleList ? "#ff4444" : "#00e676";
+                    } else {
+                        percentageColor = isImpossibleList ? "#ff6666" : "#ffaa00";
+                    }
+
+                    return `
+                        <div class="record-row">
+                            <span>
+                                <a href="${getProfileUrl(r.username)}">${escapeHtml(r.username)}</a> 
+                                <span style="color:${percentageColor}"> - ${escapeHtml(r.percentage)}%</span>
+                            </span>
+                            <a href="${escapeHtml(r.video_url)}" target="_blank" class="proof">Watch</a>
+                        </div>
+                    `;
+                }).join('');
+
+                list.innerHTML = recordsHtml || "<p style='color:#666; padding: 15px;'>No records yet.</p>";
+            }
 
             loadHistory(dbKey);
         }

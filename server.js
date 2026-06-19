@@ -50,6 +50,56 @@ const validatePassword = (password) => {
     return null;
 };
 
+const PROFILE_ICON_TYPES = new Set(['cube', 'ship', 'ball', 'ufo', 'wave', 'robot', 'spider', 'swing', 'jetpack']);
+
+const cleanProfileText = (value, maxLength) => {
+    const text = String(value ?? '').trim();
+    return text.length > maxLength ? text.slice(0, maxLength) : text;
+};
+
+const readProfileInt = (value, fallback) => {
+    const parsed = parseInt(value, 10);
+    return Number.isNaN(parsed) ? fallback : parsed;
+};
+
+const cleanProfileIcon = (icon = {}) => {
+    const type = PROFILE_ICON_TYPES.has(icon.type) ? icon.type : 'cube';
+    const parsedId = parseInt(icon.id, 10);
+    const parsedColor1 = parseInt(icon.color1, 10);
+    const parsedColor2 = parseInt(icon.color2, 10);
+    const parsedGlow = parseInt(icon.glow, 10);
+
+    const id = Number.isNaN(parsedId) ? 1 : Math.min(999, Math.max(1, parsedId));
+    const color1 = Number.isNaN(parsedColor1) ? 12 : Math.min(999, Math.max(0, parsedColor1));
+    const color2 = Number.isNaN(parsedColor2) ? 3 : Math.min(999, Math.max(0, parsedColor2));
+    const glow = Number.isNaN(parsedGlow) ? -1 : Math.min(999, Math.max(-1, parsedGlow));
+
+    return { type, id, color1, color2, glow };
+};
+
+const serializeProfileUser = (user) => ({
+    displayName: user.display_name || '',
+    bio: user.bio || '',
+    pronouns: user.pronouns || '',
+    country: user.country || '',
+    socialLinks: {
+        youtube: user.social_youtube || '',
+        twitter: user.social_twitter || '',
+        twitch: user.social_twitch || '',
+        discord: user.social_discord || '',
+        reddit: user.social_reddit || '',
+        gdbrowser: user.social_gdbrowser || '',
+    },
+    icon: {
+        type: user.icon_type || 'cube',
+        id: readProfileInt(user.icon_id, 1),
+        color1: readProfileInt(user.color1, 12),
+        color2: readProfileInt(user.color2, 3),
+        glow: readProfileInt(user.glow, -1),
+    },
+});
+
+
 app.get('/api/demons', async (req, res) => {
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary'; 
     try {
@@ -159,29 +209,33 @@ async function sendVerificationEmail(targetEmail, username, link) {
         to: targetEmail,
         subject: 'Verify your WBDL Account',
         html: `
-        <div style="font-family: sans-serif; background-color: #121212; color: white; padding: 40px; border-radius: 8px; max-width: 600px; margin: auto; border: 1px solid #333;">
-            <h1 style="color: #0053c2; text-align: center;">Welcome, ${username}!</h1>
+        <div style="font-family: Comfortaa, Arial, sans-serif; background-color: #181b1e; color: #f2f3f5; padding: 40px; border-radius: 12px; max-width: 600px; margin: auto; border: 1px solid #2a2f36;">
+            <h1 style="font-family: Comfortaa, Arial, sans-serif; color: #00e676; text-align: center; margin: 0 0 22px; font-size: 28px; line-height: 1.2;">
+                Welcome, ${username}!
+            </h1>
             
-            <p style="font-size: 16px; line-height: 1.6; text-align: center; color: #ccc;">
+            <p style="font-size: 16px; line-height: 1.6; text-align: center; color: #8b929c; margin: 0;">
                 Thanks for signing up for the Web Browser Demonlist! To get started, activate your account by clicking the button below.
             </p>
 
             <div style="text-align: center; margin: 30px 0;">
-                <a href="${link}" style="background-color: #0053c2; color: black; padding: 14px 28px; font-weight: bold; text-decoration: none; border-radius: 4px; display: inline-block;">
+                <a href="${link}" style="background-color: #00e676; color: #000; padding: 14px 28px; font-weight: 800; text-decoration: none; border-radius: 8px; display: inline-block; font-size: 15px;">
                     Verify my Account
                 </a>
             </div>
 
-            <div style="background-color: #1a1a1a; padding: 20px; border-radius: 6px; text-align: center; margin-top: 20px;">
-                <p style="margin: 0 0 10px 0; color: #fff; font-size: 14px;">Also, feel free to join the discord!</p>
+            <div style="background-color: #20242a; padding: 20px; border-radius: 8px; text-align: center; margin-top: 20px; border: 1px solid #2a2f36;">
+                <p style="margin: 0 0 10px 0; color: #f2f3f5; font-size: 14px;">
+                    Also, feel free to join the discord!
+                </p>
                 <a href="https://discord.gg/Pz8TehUPmP" style="color: #5865F2; text-decoration: none; font-weight: bold; font-size: 16px;">
-                    discord.gg/Pz8TehUPmP
+                discord.gg/Pz8TehUPmP
                 </a>
             </div>
 
-            <hr style="border: 0; border-top: 1px solid #333; margin: 20px 0;">
+            <hr style="border: 0; border-top: 1px solid #2a2f36; margin: 24px 0;">
             
-            <p style="font-size: 12px; color: #555; text-align: center;">
+            <p style="font-size: 12px; color: #5a616b; text-align: center; margin: 0;">
                 If you didn't create an account, simply ignore this email.
             </p>
         </div>
@@ -195,15 +249,24 @@ async function sendResetEmail(targetEmail, username, link) {
         to: targetEmail,
         subject: 'WBDL Password Reset',
         html: `
-        <div style="font-family: sans-serif; background-color: #121212; color: white; padding: 40px; border-radius: 8px; max-width: 600px; margin: auto; border: 1px solid #333;">
-            <h1 style="color: #0053c2; text-align: center;">Password Reset Request</h1>
-            <p style="text-align: center; color: #ccc;">Hello ${username}, we received a request to reset your account's password. Click the button below to proceed.</p>
+        <div style="font-family: Nunito, Arial, sans-serif; background-color: #181b1e; color: #f2f3f5; padding: 40px; border-radius: 12px; max-width: 600px; margin: auto; border: 1px solid #2a2f36;">
+            <h1 style="font-family: Comfortaa, Arial, sans-serif; color: #00e676; text-align: center; margin: 0 0 22px; font-size: 28px; line-height: 1.2;">
+                Password Reset Request
+            </h1>
+
+            <p style="text-align: center; color: #8b929c; font-size: 16px; line-height: 1.6; margin: 0;">
+                Hello ${username}, we received a request to reset your account's password. Click the button below to proceed.
+            </p>
+
             <div style="text-align: center; margin: 30px 0;">
-                <a href="${link}" style="background-color: #0053c2; color: black; padding: 14px 28px; font-weight: bold; text-decoration: none; border-radius: 4px; display: inline-block;">
+                <a href="${link}" style="background-color: #00e676; color: #000; padding: 14px 28px; font-weight: 800; text-decoration: none; border-radius: 8px; display: inline-block; font-size: 15px;">
                     Reset Password
                 </a>
             </div>
-            <p style="font-size: 12px; color: #555; text-align: center;">This link will expire in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+
+            <p style="font-size: 12px; color: #5a616b; text-align: center; margin: 0;">
+                This link will expire in 1 hour. If you didn't request this, you can safely ignore this email.
+            </p>
         </div>
         `
     });
@@ -327,7 +390,7 @@ app.get('/api/me', async (req, res) => {
     if (req.session.userId) {
         try {
             const user = await pool.query(
-                'SELECT username, role FROM users WHERE id = $1', 
+                'SELECT username, role, display_name, icon_type, icon_id, color1, color2, glow FROM users WHERE id = $1', 
                 [req.session.userId]
             );
 
@@ -337,6 +400,14 @@ app.get('/api/me', async (req, res) => {
                     loggedIn: true, 
                     username: userData.username, 
                     role: userData.role,
+                    displayName: userData.display_name || '',
+                    icon: {
+                        type: userData.icon_type || 'cube',
+                        id: readProfileInt(userData.icon_id, 1),
+                        color1: readProfileInt(userData.color1, 12),
+                        color2: readProfileInt(userData.color2, 3),
+                        glow: readProfileInt(userData.glow, -1),
+                    },
                 });
             } else {
                 res.json({ loggedIn: false });
@@ -1042,7 +1113,11 @@ app.get('/api/profile/:username', async (req, res) => {
 
     try {
         const userResult = await pool.query(
-            'SELECT id, username, created_at, role FROM users WHERE username = $1', 
+            `SELECT id, username, created_at, role,
+                    display_name, bio, pronouns, country,
+                    social_youtube, social_twitter, social_twitch, social_discord, social_reddit, social_gdbrowser,
+                    icon_type, icon_id, color1, color2, glow
+             FROM users WHERE username = $1`, 
             [username]
         );
         
@@ -1153,6 +1228,7 @@ app.get('/api/profile/:username', async (req, res) => {
             records: recordsWithPoints,
             role: user.role,
             userId: user.id,
+            ...serializeProfileUser(user),
         });
     } catch (err) {
         console.error(err);
@@ -1300,6 +1376,102 @@ app.get('/api/demons/:id', async (req, res) => {
     }
 });
 
+
+app.get('/api/settings/profile', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    try {
+        const userResult = await pool.query(`
+            SELECT username,
+                   display_name, bio, pronouns, country,
+                   social_youtube, social_twitter, social_twitch, social_discord, social_reddit, social_gdbrowser,
+                   icon_type, icon_id, color1, color2, glow
+            FROM users
+            WHERE id = $1
+        `, [req.session.userId]);
+
+        if (userResult.rows.length === 0) return res.status(404).json({ error: "User not found" });
+
+        const user = userResult.rows[0];
+        res.json({
+            username: user.username,
+            ...serializeProfileUser(user),
+        });
+    } catch (err) {
+        console.error("Profile settings load error:", err);
+        res.status(500).json({ error: "Server error." });
+    }
+});
+
+app.post('/api/settings/profile', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const socialLinks = req.body.socialLinks || {};
+    const icon = cleanProfileIcon(req.body.icon || {});
+
+    const profile = {
+        displayName: cleanProfileText(req.body.displayName, 40),
+        bio: cleanProfileText(req.body.bio, 500),
+        pronouns: cleanProfileText(req.body.pronouns, 60),
+        country: cleanProfileText(req.body.country, 80),
+        youtube: cleanProfileText(socialLinks.youtube, 200),
+        twitter: cleanProfileText(socialLinks.twitter, 200),
+        twitch: cleanProfileText(socialLinks.twitch, 200),
+        discord: cleanProfileText(socialLinks.discord, 80),
+        reddit: cleanProfileText(socialLinks.reddit, 200),
+        gdbrowser: cleanProfileText(socialLinks.gdbrowser, 200),
+        iconType: icon.type,
+        iconId: icon.id,
+        color1: icon.color1,
+        color2: icon.color2,
+        glow: icon.glow,
+    };
+
+    try {
+        await pool.query(`
+            UPDATE users
+            SET display_name = $1,
+                bio = $2,
+                pronouns = $3,
+                country = $4,
+                social_youtube = $5,
+                social_twitter = $6,
+                social_twitch = $7,
+                social_discord = $8,
+                social_reddit = $9,
+                social_gdbrowser = $10,
+                icon_type = $11,
+                icon_id = $12,
+                color1 = $13,
+                color2 = $14,
+                glow = $15
+            WHERE id = $16
+        `, [
+            profile.displayName,
+            profile.bio,
+            profile.pronouns,
+            profile.country,
+            profile.youtube,
+            profile.twitter,
+            profile.twitch,
+            profile.discord,
+            profile.reddit,
+            profile.gdbrowser,
+            profile.iconType,
+            profile.iconId,
+            profile.color1,
+            profile.color2,
+            profile.glow,
+            req.session.userId,
+        ]);
+
+        res.json({ message: "Profile updated successfully!" });
+    } catch (err) {
+        console.error("Profile settings update error:", err);
+        res.status(500).json({ error: "Server error." });
+    }
+});
+
 app.post('/api/settings/username', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
     
@@ -1322,6 +1494,7 @@ app.post('/api/settings/username', async (req, res) => {
             [username, req.session.userId]
         );
 
+        req.session.username = username;
         res.json({ message: "Username updated successfully!" });
     } catch (err) {
         console.error("Username update error:", err);
@@ -1562,33 +1735,28 @@ app.get('/api/changelog', async (req, res) => {
 
     try {
         const result = await pool.query(`
-            SELECT demon_name, change_type, old_position, new_position, created_at 
+            SELECT 
+                demon_id,
+                demon_name, 
+                change_type, 
+                old_position, 
+                new_position, 
+                created_at 
             FROM changelog 
-            WHERE change_type IN ('added', 'moved', 'deleted') AND list_type = $1
-            ORDER BY created_at DESC LIMIT 50
+            WHERE change_type IN ('added', 'moved', 'deleted') 
+              AND list_type = $1
+            ORDER BY created_at DESC 
+            LIMIT 50
         `, [list]);
 
         const formattedLogs = result.rows.map(log => {
-            let text = "";
-            let colorClass = "";
-
-            if (log.change_type === 'added') {
-                text = `**${log.demon_name}** was placed at **#${log.new_position}**`;
-                colorClass = "text-added";
-            } 
-            else if (log.change_type === 'moved') {
-                text = `**${log.demon_name}** was moved from **#${log.old_position}** to **#${log.new_position}**`;
-                colorClass = "text-moved";
-            } 
-            else if (log.change_type === 'deleted') {
-                text = `**${log.demon_name}** was removed from the list`;
-                colorClass = "text-deleted";
-            }
-
             return {
                 date: log.created_at,
-                text: text,
-                type: colorClass
+                demonId: log.demon_id,
+                demonName: log.demon_name,
+                changeType: log.change_type,
+                oldPosition: log.old_position,
+                newPosition: log.new_position,
             };
         });
 

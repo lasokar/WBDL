@@ -22,7 +22,6 @@
             padding: 40px;
             border-radius: var(--radius);
             border: 1px solid var(--border);
-            border-bottom: 3px solid var(--border);
             margin-bottom: 28px;
             text-align: center;
         }
@@ -49,15 +48,25 @@
             width: auto;
         }
 
+        .profile-stats-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 22px;
+            margin-bottom: 28px;
+        }
+
         .stats-grid {
             display: flex;
             justify-content: center;
             gap: 48px;
-            margin-top: 24px;
             flex-wrap: wrap;
         }
 
-        .stat-item { text-align: center; }
+        .stat-item {
+            text-align: center;
+            min-width: max-content;
+        }
         .stat-label {
             display: block;
             color: var(--text-muted);
@@ -70,6 +79,177 @@
         .points-tag {
             color: var(--accent);
             font-family: var(--font-display);
+        }
+
+        .hardest-link {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text);
+            font: inherit;
+            font-size: 1.5em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.15s, opacity 0.15s;
+        }
+
+        .hardest-link:hover:not(:disabled) {
+            color: var(--accent);
+        }
+
+        .hardest-link:disabled {
+            cursor: default;
+            opacity: 1;
+        }
+
+
+
+        .profile-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+
+        .profile-icon-wrap {
+            width: 96px;
+            height: 96px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            flex-shrink: 0;
+        }
+
+        .profile-icon-canvas-host {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .profile-icon-canvas-host.is-loading::after {
+            content: "...";
+            color: var(--text-muted);
+        }
+
+        .gd-icon-canvas {
+            width: 64px;
+            height: 64px;
+            max-width: 64px;
+            max-height: 64px;
+            object-fit: contain;
+            image-rendering: auto;
+        }
+
+        .profile-meta {
+            margin: 18px auto 0;
+            max-width: 640px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .profile-bio {
+            color: var(--text);
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .profile-details {
+            position: absolute;
+            top: 16px;
+            right: 66px;
+            display: block;
+            color: var(--text-muted);
+            font-size: 0.84em;
+            line-height: 1.45;
+            text-align: right;
+            white-space: pre-line;
+            max-width: min(430px, calc(100% - 170px));
+            z-index: 5;
+        }
+
+        .profile-socials {
+            position: absolute;
+            right: 16px;
+            bottom: 16px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            z-index: 5;
+        }
+
+        .profile-social-link {
+            width: 30px;
+            height: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 0;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: opacity 0.15s, transform 0.15s;
+        }
+
+        .profile-social-link:hover {
+            opacity: 0.78;
+            transform: translateY(-1px);
+        }
+
+        .profile-social-link img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            pointer-events: none;
+            image-rendering: auto;
+        }
+
+        .discord-social {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .discord-social::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 8px);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            padding: 7px 10px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+            opacity: 0;
+            transform: translate(-50%, 4px);
+            pointer-events: none;
+            transition: opacity 0.15s, transform 0.15s;
+            z-index: 30;
+        }
+
+        .discord-social:hover::after {
+            opacity: 1;
+            transform: translate(-50%, 0);
+        }
+
+        .discord-social.copied::after {
+            color: #00e676;
         }
 
         .back-link {
@@ -284,6 +464,36 @@
             gap: 16px;
         }
 
+        .completed-sort-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 0.86em;
+            white-space: nowrap;
+        }
+
+        .completed-sort-wrap label {
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+
+        .completed-sort-select {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text);
+            padding: 7px 10px;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .completed-sort-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
         .section-subtext {
             color: var(--text-muted);
             font-size: 0.9em;
@@ -307,12 +517,30 @@
         }
 
         .completion-modal {
+            position: relative;
             width: min(100%, 460px);
             background: var(--surface);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
             padding: 22px;
+        }
+
+        .completion-modal-close-x {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5em;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .completion-modal-close-x:hover {
+            color: #ff4444;
         }
 
         .completion-modal h4 {
@@ -349,7 +577,7 @@
         .completion-modal .modal-actions {
             display: flex;
             gap: 10px;
-            justify-content: flex-end;
+            justify-content: center;
             flex-wrap: wrap;
             margin-top: 18px;
         }
@@ -376,7 +604,7 @@
         }
 
         .completion-modal .modal-close {
-            margin-right: auto;
+            margin-right: 0;
         }
 
         .clickable-completion {
@@ -387,6 +615,34 @@
         .clickable-completion:hover {
             color: var(--accent);
             opacity: 0.95;
+        }
+
+        @media (max-width: 700px) {
+            .stats-grid {
+                gap: 24px;
+            }
+
+            .profile-details,
+            .profile-socials {
+                position: static;
+                justify-content: center;
+                max-width: none;
+                margin-top: 12px;
+            }
+
+            .profile-meta {
+                display: grid;
+            }
+
+            .section-head {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .completed-sort-wrap {
+                width: 100%;
+                justify-content: flex-start;
+            }
         }
     </style>
 </head>
@@ -425,14 +681,30 @@
                     </div>
                 </div>
 
-                <h1 id="user-name-container">
-                    <img id="role-badge" src="" class="mod-badge" style="display:none;">
-                    <div>
-                        <span id="user-name">Loading...</span>
-                        <span id="user-id-display" class="user-id"></span>
+                <div class="profile-title-row">
+                    <div class="profile-icon-wrap" id="profile-icon-wrap" aria-hidden="true">
+                        <div id="profile-icon-canvas-host" class="profile-icon-canvas-host"></div>
                     </div>
-                </h1>
 
+                    <h1 id="user-name-container">
+                        <img id="role-badge" src="" class="mod-badge" style="display:none;">
+                        <div>
+                            <span id="user-name">Loading...</span>
+                            <span id="user-id-display" class="user-id"></span>
+                        </div>
+                    </h1>
+                </div>
+
+                <div class="profile-meta" id="profile-meta" style="display:none;">
+                    <div class="profile-bio" id="profile-bio"></div>
+                    <div class="profile-details" id="profile-details"></div>
+                    <div class="profile-socials" id="profile-socials"></div>
+                </div>
+
+
+            </div>
+
+            <div class="profile-stats-section">
                 <div class="stats-grid">
                     <div class="stat-item">
                         <span class="stat-label">Total Points</span>
@@ -444,7 +716,7 @@
                     </div>
                     <div class="stat-item" id="hardest-stat">
                         <span class="stat-label">Hardest</span>
-                        <span id="current-hardest" style="font-size: 1.5em; font-weight: bold;">N/A</span>
+                        <button type="button" id="current-hardest" class="hardest-link" disabled>N/A</button>
                     </div>
                 </div>
             </div>
@@ -452,6 +724,14 @@
             <div class="section-card" id="completed-section">
                 <div class="section-head">
                     <h3 style="margin: 0;">Levels Beaten</h3>
+                    <div class="completed-sort-wrap">
+                        <label for="completed-sort">Sort</label>
+                        <select id="completed-sort" class="completed-sort-select" onchange="setCompletedSort(this.value)">
+                            <option value="recent" selected>Most recent</option>
+                            <option value="difficult">Most difficult</option>
+                            <option value="alphabetical">Alphabetical</option>
+                        </select>
+                    </div>
                 </div>
                 <div id="completed-levels" class="completed-list"></div>
             </div>
@@ -474,9 +754,10 @@
 
     <div class="completion-modal-overlay" id="completion-modal-overlay" aria-hidden="true">
         <div class="completion-modal" role="dialog" aria-modal="true" aria-labelledby="completion-modal-title">
+            <button class="completion-modal-close-x" type="button" id="completion-modal-close" aria-label="Close">&times;</button>
             <h4 id="completion-modal-title">Level</h4>
             <div class="modal-row">
-                <span class="modal-key">Status</span>
+                <span class="modal-key">Completion Status</span>
                 <span class="modal-value" id="completion-modal-status">N/A</span>
             </div>
             <div class="modal-row">
@@ -488,7 +769,7 @@
                 <span class="modal-value" id="completion-modal-points">N/A</span>
             </div>
             <div class="modal-actions">
-                <button class="modal-btn modal-close" type="button" id="completion-modal-close">Close</button>
+                <a class="modal-btn" id="completion-modal-demon" href="#" target="_blank" rel="noopener">Level Page</a>
                 <a class="modal-btn" id="completion-modal-video" href="#" target="_blank" rel="noopener">Watch</a>
             </div>
         </div>
@@ -502,7 +783,483 @@
             document.body.classList.add('impossible-list');
         }
 
+
+        const WBDLIconRenderer = (() => {
+            const ICON_CATEGORY_CONFIG = {
+                cube: { key: 'cube', label: 'Cube', folder: 'cubes', prefix: 'player' },
+                ship: { key: 'ship', label: 'Ship', folder: 'ships', prefix: 'ship' },
+                ball: { key: 'ball', label: 'Ball', folder: 'balls', prefix: 'player_ball' },
+                ufo: { key: 'ufo', label: 'UFO', folder: 'ufos', prefix: 'bird' },
+                wave: { key: 'wave', label: 'Wave', folder: 'waves', prefix: 'dart' },
+                robot: { key: 'robot', label: 'Robot', folder: 'robots', prefix: 'robot' },
+                spider: { key: 'spider', label: 'Spider', folder: 'spiders', prefix: 'spider' },
+                swing: { key: 'swing', label: 'Swing', folder: 'swings', prefix: 'swing' },
+                jetpack: { key: 'jetpack', label: 'Jetpack', folder: 'jetpacks', prefix: 'jetpack' },
+            };
+
+            let colorsPromise = null;
+            const animDescCache = {};
+
+            function getCategory(type) {
+                return ICON_CATEGORY_CONFIG[type] || ICON_CATEGORY_CONFIG.cube;
+            }
+
+            function getCategories() {
+                return Object.values(ICON_CATEGORY_CONFIG);
+            }
+
+            function getAssetUrl(path) {
+                return new URL(path.replace(/^\/+/, ''), window.location.origin + '/').href;
+            }
+
+            async function loadColors() {
+                if (!colorsPromise) {
+                    colorsPromise = fetch('/assets/colors.json')
+                        .then(res => res.ok ? res.json() : {})
+                        .catch(() => ({}));
+                }
+                return colorsPromise;
+            }
+
+            async function getColor(colorId, fallback) {
+                const colors = await loadColors();
+                const color = colors[String(colorId)] || fallback;
+                return {
+                    r: Number(color?.r ?? fallback.r),
+                    g: Number(color?.g ?? fallback.g),
+                    b: Number(color?.b ?? fallback.b),
+                };
+            }
+
+            function parsePlistFrames(xmlText) {
+                const cleaned = String(xmlText || '').replace(/^[^<]+/, '').replace(/<!DOCTYPE[^[>]*(?:\[[^\]]*\])?>/i, '');
+                const doc = new DOMParser().parseFromString(cleaned, 'text/xml');
+
+                function parseNode(el) {
+                    switch (el.tagName) {
+                        case 'dict': {
+                            const obj = {};
+                            const kids = Array.from(el.children);
+                            for (let i = 0; i + 1 < kids.length; i += 2) {
+                                obj[kids[i].textContent] = parseNode(kids[i + 1]);
+                            }
+                            return obj;
+                        }
+                        case 'array': return Array.from(el.children).map(parseNode);
+                        case 'string': return el.textContent;
+                        case 'integer': return parseInt(el.textContent, 10);
+                        case 'real': return parseFloat(el.textContent);
+                        case 'true': return true;
+                        case 'false': return false;
+                        default: return el.textContent;
+                    }
+                }
+
+                if (doc.querySelector('parsererror')) return {};
+                const rootEl = doc.querySelector('plist > dict') || doc.querySelector('dict');
+                if (!rootEl) return {};
+                const root = parseNode(rootEl);
+                return (root && root.frames) || root || {};
+            }
+
+            function parseGDCoord(str) {
+                return ((str || '').match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+            }
+
+            function normalizeAtlasFrame(frame) {
+                if (!frame) return null;
+                return {
+                    textureRect: frame.textureRect || frame.frame || frame.frameRect || frame.rect || null,
+                    spriteSourceSize: frame.spriteSourceSize || frame.sourceSize || frame.spriteSize || frame.spriteRect || null,
+                    spriteOffset: frame.spriteOffset || frame.offset || '{0,0}',
+                    textureRotated: frame.textureRotated ?? frame.rotated ?? false,
+                };
+            }
+
+            function getAtlasRenderPrefix(frameKeys, baseName) {
+                const hasMatchingFrames = frameKeys.some(key => key.startsWith(`${baseName}_`) && key.endsWith('_001.png'));
+                return hasMatchingFrames ? baseName : null;
+            }
+
+            function compareAtlasLayers(left, right) {
+                const parseInfo = (key) => {
+                    const tokens = key.replace(/_001\.png$/, '').split('_').slice(2);
+                    const isExtra = tokens.includes('extra');
+                    const isNumberedPart = !isExtra && tokens.length > 1 && /^\d+$/.test(tokens[1]);
+                    const priority = isExtra ? 2 : isNumberedPart ? 1 : 0;
+                    const normalizedTokens = tokens.map(token => (/^\d+$/.test(token) ? Number(token) : token));
+                    return { priority, tokens: normalizedTokens };
+                };
+
+                const leftInfo = parseInfo(left);
+                const rightInfo = parseInfo(right);
+                if (leftInfo.priority !== rightInfo.priority) return leftInfo.priority - rightInfo.priority;
+
+                const maxLength = Math.max(leftInfo.tokens.length, rightInfo.tokens.length);
+                for (let i = 0; i < maxLength; i++) {
+                    const l = leftInfo.tokens[i];
+                    const r = rightInfo.tokens[i];
+                    if (l === undefined) return -1;
+                    if (r === undefined) return 1;
+                    if (l === r) continue;
+                    if (typeof l === 'number' && typeof r === 'number') return l - r;
+                    if (typeof l === 'number') return -1;
+                    if (typeof r === 'number') return 1;
+                    return String(l).localeCompare(String(r));
+                }
+                return left.localeCompare(right);
+            }
+
+            function tintCanvas(canvas, color, keepShading = true) {
+                const ctx = canvas.getContext('2d');
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const pixels = imageData.data;
+
+                for (let i = 0; i < pixels.length; i += 4) {
+                    const alpha = pixels[i + 3];
+                    if (!alpha) continue;
+
+                    const r = pixels[i];
+                    const g = pixels[i + 1];
+                    const b = pixels[i + 2];
+                    const brightness = (r + g + b) / 3;
+
+                    if (brightness < 52) {
+                        continue;
+                    }
+
+                    const shade = keepShading
+                        ? Math.max(0.35, Math.min(1, brightness / 255))
+                        : 1;
+
+                    pixels[i] = Math.round(color.r * shade);
+                    pixels[i + 1] = Math.round(color.g * shade);
+                    pixels[i + 2] = Math.round(color.b * shade);
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+                return canvas;
+            }
+
+            function makeFallbackCanvas(label = '?') {
+                const canvas = document.createElement('canvas');
+                canvas.width = 96;
+                canvas.height = 96;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+                ctx.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1);
+                ctx.fillStyle = 'rgba(255,255,255,0.72)';
+                ctx.font = 'bold 42px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(label, canvas.width / 2, canvas.height / 2);
+                return canvas;
+            }
+
+            async function renderIcon({ type = 'cube', id = 1, color1 = 12, color2 = 3, glow = -1 } = {}, options = {}) {
+                const category = getCategory(type);
+                const iconNum = Math.max(1, parseInt(id, 10) || 1);
+                const numStr = String(iconNum).padStart(2, '0');
+                const baseName = `${category.prefix}_${numStr}`;
+                const assetQuality = options.quality === 'uhd' ? 'uhd' : 'hd';
+                const assetName = `${baseName}-${assetQuality}`;
+                const iconPath = `/assets/icons/${category.folder}/${assetName}`;
+
+                const [mainColor, secondColor, glowColor] = await Promise.all([
+                    getColor(color1, { r: 0, g: 230, b: 118 }),
+                    getColor(color2, { r: 255, g: 255, b: 255 }),
+                    getColor(glow, { r: 255, g: 255, b: 255 }),
+                ]);
+
+                let frames;
+                try {
+                    const resp = await fetch(`${iconPath}.plist`);
+                    if (!resp.ok) return makeFallbackCanvas(String(iconNum));
+                    frames = parsePlistFrames(await resp.text());
+                } catch (err) {
+                    return makeFallbackCanvas(String(iconNum));
+                }
+
+                const texture = await new Promise(resolve => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = () => resolve(null);
+                    img.src = getAssetUrl(`${iconPath}.png`);
+                });
+                if (!texture) return makeFallbackCanvas(String(iconNum));
+
+                const frameKeys = Object.keys(frames);
+                const renderPrefix = getAtlasRenderPrefix(frameKeys, baseName);
+                if (!renderPrefix) return makeFallbackCanvas(String(iconNum));
+                const baseLen = renderPrefix.length + 1;
+
+                const glowLayerKeys = frameKeys
+                    .filter(key => key.startsWith(`${renderPrefix}_`) && key.endsWith('_001.png') && key.includes('_glow_'))
+                    .sort(compareAtlasLayers);
+
+                const layerKeys = frameKeys
+                    .filter(key => key.startsWith(`${renderPrefix}_`) && key.endsWith('_001.png') && !key.includes('_glow_'))
+                    .sort(compareAtlasLayers)
+                    .sort((left, right) => {
+                        const leftPart = left.slice(baseLen, -'_001.png'.length);
+                        const rightPart = right.slice(baseLen, -'_001.png'.length);
+                        const leftIsBody = leftPart === '001';
+                        const rightIsBody = rightPart === '001';
+                        const leftIsSecond = /(?:^|_)0*2$/.test(leftPart);
+                        const rightIsSecond = /(?:^|_)0*2$/.test(rightPart);
+                        if (leftIsSecond !== rightIsSecond) return leftIsSecond ? -1 : 1;
+                        if (leftIsBody !== rightIsBody) return leftIsBody ? 1 : -1;
+                        return 0;
+                    });
+
+                if (!layerKeys.length) return makeFallbackCanvas(String(iconNum));
+
+                if (category.key === 'robot' || category.key === 'spider') {
+                    const animDescFilename = category.key === 'robot' ? 'Robot_AnimDesc.plist' : 'Spider_AnimDesc.plist';
+                    const animDescUrl = getAssetUrl(`/assets/icons/${animDescFilename}`);
+
+                    if (animDescCache[animDescUrl] === undefined) {
+                        try {
+                            const ar = await fetch(animDescUrl);
+                            animDescCache[animDescUrl] = ar.ok ? parsePlistFrames(await ar.text()) : null;
+                        } catch (err) {
+                            animDescCache[animDescUrl] = null;
+                        }
+                    }
+
+                    const animDesc = animDescCache[animDescUrl];
+
+                    const idleKey = category.key === 'robot' ? 'Robot_idle_001.png' : 'Spider_idle_001.png';
+                    const idleFrame = animDesc && animDesc.animationContainer && animDesc.animationContainer[idleKey];
+
+                    if (idleFrame) {
+                        const SCALE = assetQuality === 'uhd' ? 4 : 2;
+                        const prefix01 = `${category.prefix}_01_`;
+
+                        function actualTex(name) {
+                            return String(name || '').replace(prefix01, `${renderPrefix}_`);
+                        }
+
+                        const spriteList = Object.values(idleFrame)
+                            .filter(sprite => sprite && sprite.texture)
+                            .sort((a, b) => (parseInt(a.zValue, 10) || 0) - (parseInt(b.zValue, 10) || 0));
+
+                        let minX = 0;
+                        let minY = 0;
+                        let maxX = 1;
+                        let maxY = 1;
+
+                        function getSpriteTransform(sprite) {
+                            const [px = 0, py = 0] = parseGDCoord(sprite.position);
+                            const [sxRaw = 1, syRaw = 1] = parseGDCoord(sprite.scale);
+                            const [flipXRaw = 0, flipYRaw = 0] = parseGDCoord(sprite.flipped);
+                            const sx = Number.isFinite(sxRaw) ? sxRaw : 1;
+                            const sy = Number.isFinite(syRaw) ? syRaw : 1;
+                            const rot = (parseFloat(sprite.rotation) || 0) * Math.PI / 180;
+                            const flipX = flipXRaw ? -1 : 1;
+                            const flipY = flipYRaw ? -1 : 1;
+                            return { px, py, sx, sy, rot, flipX, flipY };
+                        }
+
+                        for (const sprite of spriteList) {
+                            const frame = normalizeAtlasFrame(frames[actualTex(sprite.texture)]);
+                            if (!frame) continue;
+
+                            const [, , rw = 0, rh = 0] = parseGDCoord(frame.textureRect);
+                            const [ox = 0, oy = 0] = parseGDCoord(frame.spriteOffset);
+                            const { px, py, sx, sy, rot, flipX, flipY } = getSpriteTransform(sprite);
+                            const cosR = Math.cos(rot);
+                            const sinR = Math.sin(rot);
+
+                            for (const [cornerX, cornerY] of [
+                                [ox - rw / 2, -oy - rh / 2],
+                                [ox + rw / 2, -oy - rh / 2],
+                                [ox - rw / 2, -oy + rh / 2],
+                                [ox + rw / 2, -oy + rh / 2],
+                            ]) {
+                                const scx = cornerX * sx * flipX;
+                                const scy = cornerY * sy * flipY;
+                                const wx = px * SCALE + scx * cosR - scy * sinR;
+                                const wy = -py * SCALE + scx * sinR + scy * cosR;
+                                if (wx < minX) minX = wx;
+                                if (wx > maxX) maxX = wx;
+                                if (wy < minY) minY = wy;
+                                if (wy > maxY) maxY = wy;
+                            }
+                        }
+
+                        const renderScale = 2;
+                        const logicalW = Math.max(1, Math.ceil(maxX - minX));
+                        const logicalH = Math.max(1, Math.ceil(maxY - minY));
+                        const canvas = document.createElement('canvas');
+                        canvas.width = logicalW * renderScale;
+                        canvas.height = logicalH * renderScale;
+                        canvas.style.width = `${logicalW}px`;
+                        canvas.style.height = `${logicalH}px`;
+                        const ctx = canvas.getContext('2d');
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = 'high';
+                        ctx.scale(renderScale, renderScale);
+
+                        function drawTex(texName, sprite, tintColor) {
+                            const frame = normalizeAtlasFrame(frames[texName]);
+                            if (!frame) return;
+
+                            const [rx, ry, rw, rh] = parseGDCoord(frame.textureRect);
+                            const [ox = 0, oy = 0] = parseGDCoord(frame.spriteOffset);
+                            const rotated = frame.textureRotated === true;
+
+                            const tmp = document.createElement('canvas');
+                            tmp.width = rw;
+                            tmp.height = rh;
+                            const tctx = tmp.getContext('2d');
+                            tctx.imageSmoothingEnabled = true;
+                            tctx.imageSmoothingQuality = 'high';
+
+                            if (rotated) {
+                                tctx.save();
+                                tctx.translate(rw / 2, rh / 2);
+                                tctx.rotate(-Math.PI / 2);
+                                tctx.drawImage(texture, rx, ry, rh, rw, -rh / 2, -rw / 2, rh, rw);
+                                tctx.restore();
+                            } else {
+                                tctx.drawImage(texture, rx, ry, rw, rh, 0, 0, rw, rh);
+                            }
+
+                            if (tintColor) {
+                                tintCanvas(tmp, tintColor, true);
+                            }
+
+                            const { px, py, sx, sy, rot, flipX, flipY } = getSpriteTransform(sprite);
+                            ctx.save();
+                            ctx.translate(-minX + px * SCALE, -minY - py * SCALE);
+                            ctx.rotate(rot);
+                            ctx.scale(sx * flipX, sy * flipY);
+                            ctx.drawImage(tmp, 0, 0, rw, rh, ox - rw / 2, -oy - rh / 2, rw, rh);
+                            ctx.restore();
+                        }
+
+                        if (Number(glow) >= 0) {
+                            for (const sprite of spriteList) {
+                                const mainName = actualTex(sprite.texture);
+                                drawTex(mainName.replace('_001.png', '_glow_001.png'), sprite, glowColor);
+                            }
+                        }
+
+                        for (const sprite of spriteList) {
+                            const mainName = actualTex(sprite.texture);
+                            drawTex(mainName.replace('_001.png', '_2_001.png'), sprite, secondColor);
+                        }
+
+                        for (const sprite of spriteList) {
+                            const mainName = actualTex(sprite.texture);
+                            drawTex(mainName, sprite, mainColor);
+                        }
+
+                        for (const sprite of spriteList) {
+                            const mainName = actualTex(sprite.texture);
+                            drawTex(mainName.replace('_001.png', '_extra_001.png'), sprite, null);
+                        }
+
+                        return canvas;
+                    }
+                }
+
+                let canvW = 1;
+                let canvH = 1;
+                for (const key of [...layerKeys, ...(Number(glow) >= 0 ? glowLayerKeys : [])]) {
+                    const frame = normalizeAtlasFrame(frames[key]);
+                    if (!frame) continue;
+                    const [ssw, ssh] = parseGDCoord(frame.spriteSourceSize);
+                    if (ssw > canvW) canvW = ssw;
+                    if (ssh > canvH) canvH = ssh;
+                }
+
+                const renderScale = 2;
+                const logicalW = Math.max(1, Math.ceil(canvW));
+                const logicalH = Math.max(1, Math.ceil(canvH));
+                const canvas = document.createElement('canvas');
+                canvas.width = logicalW * renderScale;
+                canvas.height = logicalH * renderScale;
+                canvas.style.width = `${logicalW}px`;
+                canvas.style.height = `${logicalH}px`;
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.scale(renderScale, renderScale);
+
+                function drawAtlasLayer(key, tintColor = null) {
+                    const frame = normalizeAtlasFrame(frames[key]);
+                    if (!frame) return;
+
+                    const [rx, ry, rw, rh] = parseGDCoord(frame.textureRect);
+                    const [ox = 0, oy = 0] = parseGDCoord(frame.spriteOffset);
+                    const rotated = frame.textureRotated === true;
+                    const tmp = document.createElement('canvas');
+                    tmp.width = rw;
+                    tmp.height = rh;
+                    const tctx = tmp.getContext('2d');
+                    tctx.imageSmoothingEnabled = true;
+                    tctx.imageSmoothingQuality = 'high';
+
+                    if (rotated) {
+                        tctx.save();
+                        tctx.translate(rw / 2, rh / 2);
+                        tctx.rotate(-Math.PI / 2);
+                        tctx.drawImage(texture, rx, ry, rh, rw, -rh / 2, -rw / 2, rh, rw);
+                        tctx.restore();
+                    } else {
+                        tctx.drawImage(texture, rx, ry, rw, rh, 0, 0, rw, rh);
+                    }
+
+                    if (tintColor) {
+                        tintCanvas(tmp, tintColor, true);
+                    }
+
+                    const ufoYOffset = category.key === 'ufo' ? 10 : 0;
+                    const dx = logicalW / 2 + ox - rw / 2;
+                    const dy = logicalH / 2 - oy - rh / 2 + ufoYOffset;
+                    ctx.drawImage(tmp, 0, 0, rw, rh, dx, dy, rw, rh);
+                }
+
+                if (Number(glow) >= 0) {
+                    for (const key of glowLayerKeys) {
+                        drawAtlasLayer(key, glowColor);
+                    }
+                }
+
+                for (const key of layerKeys) {
+                    const part = key.slice(baseLen, -'_001.png'.length);
+                    const isSecondary = /(?:^|_)0*2$/.test(part);
+                    const isExtra = /extra/.test(part);
+                    drawAtlasLayer(key, isExtra ? null : (isSecondary ? secondColor : mainColor));
+                }
+
+                return canvas;
+            }
+
+            async function renderInto(host, icon, options = {}) {
+                if (!host) return;
+                host.textContent = '';
+                host.classList.add('is-loading');
+                const rendered = await renderIcon(icon, options);
+                rendered.className = 'gd-icon-canvas';
+                rendered.style.imageRendering = 'auto';
+                host.classList.remove('is-loading');
+                host.replaceChildren(rendered);
+            }
+
+            return { getCategories, loadColors, renderIcon, renderInto };
+        })();
+
+
         let completedRecordsCache = [];
+        let completedSortMode = 'recent';
+        let hardestRecordCache = null;
 
         function escapeHtml(str) {
             return String(str ?? '')
@@ -512,6 +1269,170 @@
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
         }
+
+
+
+        function normalizeSocialUrl(platform, value) {
+            const raw = String(value || '').trim();
+            if (!raw) return '';
+            if (/^https?:\/\//i.test(raw)) return raw;
+            const clean = raw.replace(/^@/, '').replace(/^u\//i, '').replace(/^\/+/, '');
+
+            switch (platform) {
+                case 'youtube': return `https://youtube.com/${clean.startsWith('@') ? clean : '@' + clean}`;
+                case 'twitter': return `https://x.com/${clean}`;
+                case 'twitch': return `https://twitch.tv/${clean}`;
+                case 'reddit': return `https://reddit.com/user/${clean}`;
+                case 'gdbrowser': return `https://gdbrowser.com/u/${clean}`;
+                default: return '';
+            }
+        }
+
+        function getSocialDisplayValue(platform, value) {
+            const raw = String(value || '').trim();
+            if (!raw) return '';
+            if (platform === 'discord') return raw;
+            if (/^https?:\/\//i.test(raw)) {
+                try {
+                    const url = new URL(raw);
+                    return url.hostname.replace(/^www\./, '');
+                } catch (err) {
+                    return raw;
+                }
+            }
+            return raw;
+        }
+
+        function getSocialIconSrc(platform) {
+            const icons = {
+                youtube: '/assets/socials/youtube.png',
+                twitter: '/assets/socials/twitter.png',
+                twitch: '/assets/socials/twitch.png',
+                discord: '/assets/socials/discord.png',
+                gdbrowser: '/assets/socials/gdbrowser.png',
+            };
+            return icons[platform] || '';
+        }
+
+        function makeSocialIcon(platform, label, href) {
+            const icon = getSocialIconSrc(platform);
+            const safeLabel = escapeHtml(label);
+            return `<a class="profile-social-link" href="${escapeHtml(href)}" target="_blank" rel="noopener" aria-label="${safeLabel}">
+                <img src="${escapeHtml(icon)}" alt="${safeLabel}">
+            </a>`;
+        }
+
+        function copyTextFallback(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+            } catch (err) {}
+            textarea.remove();
+        }
+
+        async function copyDiscordUsername(el) {
+            if (!el) return;
+            const username = el.getAttribute('data-discord') || '';
+            if (!username) return;
+
+            try {
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(username);
+                } else {
+                    copyTextFallback(username);
+                }
+            } catch (err) {
+                copyTextFallback(username);
+            }
+
+            el.classList.add('copied');
+            el.setAttribute('data-tooltip', 'Copied!');
+        }
+
+        function resetDiscordTooltip(el) {
+            if (!el) return;
+            const username = el.getAttribute('data-discord') || '';
+            el.classList.remove('copied');
+            el.setAttribute('data-tooltip', username);
+        }
+
+        function makeDiscordIcon(username) {
+            const safeUsername = escapeHtml(username);
+            return `<span class="profile-social-link discord-social" role="button" tabindex="0" aria-label="Copy Discord username" data-discord="${safeUsername}" data-tooltip="${safeUsername}" onclick="copyDiscordUsername(this)" onmouseleave="resetDiscordTooltip(this)" onkeydown="if(event.key === 'Enter' || event.key === ' '){ event.preventDefault(); copyDiscordUsername(this); }">
+                <img src="${escapeHtml(getSocialIconSrc('discord'))}" alt="Discord">
+            </span>`;
+        }
+
+        function renderProfileExtras(data) {
+            const meta = document.getElementById('profile-meta');
+            const bio = document.getElementById('profile-bio');
+            const details = document.getElementById('profile-details');
+            const socials = document.getElementById('profile-socials');
+
+            const bioText = String(data.bio || '').trim();
+            const detailLines = [];
+            if (String(data.pronouns || '').trim()) detailLines.push(`Pronouns: ${String(data.pronouns).trim()}`);
+            if (String(data.country || '').trim()) detailLines.push(`Location: ${String(data.country).trim()}`);
+
+            const socialLinks = data.socialLinks || {};
+            const socialParts = [];
+
+            const youtubeValue = socialLinks.youtube;
+            const youtubeHref = normalizeSocialUrl('youtube', youtubeValue);
+            if (youtubeHref) {
+                socialParts.push(makeSocialIcon('youtube', 'YouTube', youtubeHref));
+            }
+
+            const twitterValue = socialLinks.twitter;
+            const twitterHref = normalizeSocialUrl('twitter', twitterValue);
+            if (twitterHref) {
+                socialParts.push(makeSocialIcon('twitter', 'Twitter', twitterHref));
+            }
+
+            const discordValue = String(socialLinks.discord || '').trim();
+            if (discordValue) {
+                socialParts.push(makeDiscordIcon(discordValue));
+            }
+
+            const twitchValue = socialLinks.twitch;
+            const twitchHref = normalizeSocialUrl('twitch', twitchValue);
+            if (twitchHref) {
+                socialParts.push(makeSocialIcon('twitch', 'Twitch', twitchHref));
+            }
+
+            const gdBrowserValue = socialLinks.gdbrowser;
+            const gdBrowserHref = normalizeSocialUrl('gdbrowser', gdBrowserValue);
+            if (gdBrowserHref) {
+                socialParts.push(makeSocialIcon('gdbrowser', 'GDBrowser', gdBrowserHref));
+            }
+
+            bio.innerText = bioText;
+            bio.style.display = bioText ? 'block' : 'none';
+            details.innerText = detailLines.join('\n');
+
+            socials.innerHTML = socialParts.join('');
+            details.style.display = detailLines.length ? 'block' : 'none';
+            socials.style.display = socials.innerHTML ? 'flex' : 'none';
+
+            const hasMeta = bioText || detailLines.length || socials.innerHTML;
+            meta.style.display = hasMeta ? 'grid' : 'none';
+        }
+
+        function renderProfileIcon(data) {
+            const host = document.getElementById('profile-icon-canvas-host');
+            WBDLIconRenderer.renderInto(
+                host,
+                data.icon || { type: 'cube', id: 1, color1: 12, color2: 3, glow: -1 },
+                { quality: 'uhd' }
+            );
+        }
+
 
         function getTier(position) {
             const pos = parseInt(position, 10);
@@ -602,13 +1523,22 @@
             return `#${num}, ${tier}`;
         }
 
-        function openCompletionModal({ name, placement, status, videoUrl, points }) {
+        function openCompletionModal({ name, placement, status, videoUrl, points, demonUrl }) {
             const overlay = document.getElementById('completion-modal-overlay');
             document.getElementById('completion-modal-title').innerText = name || 'Level';
             document.getElementById('completion-modal-status').innerText = status || 'Unknown';
             document.getElementById('completion-modal-placement').innerText = placement || 'N/A';
             document.getElementById('completion-modal-points').innerText =
                 (points !== undefined && points !== null && points !== '') ? points : 'N/A';
+
+            const demonBtn = document.getElementById('completion-modal-demon');
+            if (demonUrl) {
+                demonBtn.href = demonUrl;
+                demonBtn.style.display = 'inline-flex';
+            } else {
+                demonBtn.removeAttribute('href');
+                demonBtn.style.display = 'none';
+            }
 
             const videoBtn = document.getElementById('completion-modal-video');
             if (videoUrl) {
@@ -667,7 +1597,69 @@
                 placement: getPlacementLabel(record.position),
                 status: getCompletionStatusLabel(record.completion_status),
                 videoUrl: record.video_url,
-                points: record.points
+                points: record.points,
+                demonUrl: record.demon_id ? `/demon/${record.demon_id}` : ''
+            });
+        }
+
+        function setCompletedSort(mode) {
+            completedSortMode = ['recent', 'difficult', 'alphabetical'].includes(mode) ? mode : 'recent';
+            renderCompletedLevels();
+        }
+
+        function getSortedCompletedRecords(records) {
+            const list = Array.isArray(records) ? records.slice() : [];
+
+            if (completedSortMode === 'difficult') {
+                return list;
+            }
+
+            if (completedSortMode === 'alphabetical') {
+                return list.sort((a, b) => {
+                    const aName = String(a.name || '').toLowerCase();
+                    const bName = String(b.name || '').toLowerCase();
+                    return aName.localeCompare(bName, undefined, { sensitivity: 'base' });
+                });
+            }
+
+            return list.sort((a, b) => {
+                const aId = parseInt(a.record_id, 10) || 0;
+                const bId = parseInt(b.record_id, 10) || 0;
+                return bId - aId;
+            });
+        }
+
+        function renderCompletedLevels() {
+            const completedContainer = document.getElementById('completed-levels');
+            if (!completedContainer) return;
+
+            const completed = getSortedCompletedRecords(completedRecordsCache);
+
+            if (completed.length === 0) {
+                completedContainer.innerHTML = "<div class='section-empty'>No completed levels yet.</div>";
+                return;
+            }
+
+            completedContainer.innerHTML = completed.map((r, idx) => {
+                const tier = getTier(r.position);
+                const tierClass = tier === 'main' ? 'tier-main' : tier === 'extended' ? 'tier-extended' : 'tier-legacy';
+                const safeName = escapeHtml(r.name);
+                const safeRecordId = escapeHtml(r.record_id);
+
+                return `
+                    <button type="button" data-record-id="${safeRecordId}" class="completed-link clickable-completion ${tierClass}">
+                        ${safeName}
+                    </button>${idx < completed.length - 1 ? '<span class="comma"> - </span>' : ''}
+                `;
+            }).join('');
+        }
+
+        const hardestEl = document.getElementById('current-hardest');
+        if (hardestEl) {
+            hardestEl.addEventListener('click', () => {
+                if (hardestRecordCache) {
+                    openCompletedLevelModal(hardestRecordCache);
+                }
             });
         }
 
@@ -724,46 +1716,52 @@
                 const badgeEl = document.getElementById('role-badge');
                 const headerBox = document.getElementById('header-box');
 
-                nameEl.innerText = data.username;
+                const displayName = String(data.displayName || '').trim();
+                nameEl.innerText = displayName || data.username;
+                renderProfileIcon(data);
+                renderProfileExtras(data);
 
                 if (data.role === 'owner') {
                     nameEl.style.color = '#00e676';
                     badgeEl.src = '/assets/eldermoderator.png';
                     badgeEl.style.display = 'block';
-                    headerBox.style.borderBottomColor = '#00e676';
                 } else if (data.role === 'admin') {
                     nameEl.style.color = '#55acee';
                     badgeEl.src = '/assets/eldermoderator.png';
                     badgeEl.style.display = 'block';
-                    headerBox.style.borderBottomColor = '#55acee';
                 } else if (data.role === 'moderator') {
                     nameEl.style.color = '#ff4444';
                     badgeEl.src = '/assets/moderator.png';
                     badgeEl.style.display = 'block';
-                    headerBox.style.borderBottomColor = '#ff4444';
                 } else {
                     nameEl.style.color = 'white';
                     badgeEl.style.display = 'none';
-                    headerBox.style.borderBottomColor = '#333';
                 }
 
-                document.getElementById('user-id-display').innerText = `ID: ${data.userId || 'N/A'}`;
+                document.getElementById('user-id-display').innerText = displayName
+                    ? `@${data.username} • ID: ${data.userId || 'N/A'}`
+                    : `ID: ${data.userId || 'N/A'}`;
                 document.getElementById('total-points').innerText = data.totalPoints;
 
                 const records = Array.isArray(data.records) ? data.records : [];
                 const hardestRecord = getHardestRecord(records);
-                const hardestLabel = hardestRecord ? hardestRecord.name : 'N/A';
-                document.getElementById('current-hardest').innerText = hardestLabel;
+                hardestRecordCache = hardestRecord;
 
-                const completed = records
-                    .filter(r => parseInt(r.percentage, 10) === 100)
-                    .sort((a, b) => {
-                        const aId = parseInt(a.record_id, 10) || 0;
-                        const bId = parseInt(b.record_id, 10) || 0;
-                        return bId - aId;
-                    });
+                const hardestButton = document.getElementById('current-hardest');
+                if (hardestRecord) {
+                    hardestButton.innerText = hardestRecord.name;
+                    hardestButton.disabled = false;
+                } else {
+                    hardestButton.innerText = 'N/A';
+                    hardestButton.disabled = true;
+                }
+
+                const completed = records.filter(r => parseInt(r.percentage, 10) === 100);
 
                 completedRecordsCache = completed;
+                completedSortMode = 'recent';
+                const sortSelect = document.getElementById('completed-sort');
+                if (sortSelect) sortSelect.value = completedSortMode;
 
                 const completedListWorthy = completed.filter(r => parseInt(r.position, 10) <= 150);
                 const progress = records.filter(r => parseInt(r.percentage, 10) !== 100);
@@ -779,23 +1777,7 @@
                 document.getElementById('info-legacy-count').innerText = legacyCount;
                 document.getElementById('info-joined').innerText = formatJoinedDate(data.joined);
 
-                const completedContainer = document.getElementById('completed-levels');
-                if (completed.length === 0) {
-                    completedContainer.innerHTML = "<div class='section-empty'>No completed levels yet.</div>";
-                } else {
-                    completedContainer.innerHTML = completed.map((r, idx) => {
-                        const tier = getTier(r.position);
-                        const tierClass = tier === 'main' ? 'tier-main' : tier === 'extended' ? 'tier-extended' : 'tier-legacy';
-                        const safeName = escapeHtml(r.name);
-                        const safeRecordId = escapeHtml(r.record_id);
-
-                        return `
-                            <button type="button" data-record-id="${safeRecordId}" class="completed-link clickable-completion ${tierClass}">
-                                ${safeName}
-                            </button>${idx < completed.length - 1 ? '<span class="comma"> - </span>' : ''}
-                        `;
-                    }).join('');
-                }
+                renderCompletedLevels();
 
                 const progressContainer = document.getElementById('progress-list');
                 if (progress.length === 0) {

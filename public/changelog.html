@@ -54,6 +54,17 @@
         .log-text { font-size: 1em; color: var(--text-muted); line-height: 1.4; }
         .log-text .b { color: var(--text); font-weight: 700; }
 
+        .level-name-link {
+            color: var(--text);
+            font-weight: 700;
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+
+        .level-name-link:hover {
+            color: var(--accent);
+        }
+
         .log-date {
             font-size: 0.85em;
             color: var(--text-faint);
@@ -83,29 +94,73 @@
             document.body.classList.add('impossible-list');
         }
 
+        function escapeHtml(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function getLogClass(changeType) {
+            if (changeType === 'added') return 'text-added';
+            if (changeType === 'moved') return 'text-moved';
+            if (changeType === 'deleted') return 'text-deleted';
+            return '';
+        }
+
+        function getLevelNameHtml(log) {
+            const safeName = escapeHtml(log.demonName || 'Unknown Level');
+
+            if (log.demonId !== undefined && log.demonId !== null && log.demonId !== '') {
+                return `<a href="/demon/${encodeURIComponent(log.demonId)}" class="level-name-link">${safeName}</a>`;
+            }
+
+            return `<span class="b">${safeName}</span>`;
+        }
+
+        function getLogText(log) {
+            const levelName = getLevelNameHtml(log);
+
+            if (log.changeType === 'added') {
+                return `${levelName} was placed at <span class="b">#${escapeHtml(log.newPosition)}</span>`;
+            }
+
+            if (log.changeType === 'moved') {
+                return `${levelName} was moved from <span class="b">#${escapeHtml(log.oldPosition)}</span> to <span class="b">#${escapeHtml(log.newPosition)}</span>`;
+            }
+
+            if (log.changeType === 'deleted') {
+                return `${levelName} was removed from the list`;
+            }
+
+            return `${levelName} was updated`;
+        }
+
         async function loadChangelog() {
             try {
                 const res = await fetch('/api/changelog');
                 const logs = await res.json();
                 const container = document.getElementById('changelog-container');
 
-                if (logs.length === 0) {
+                if (!Array.isArray(logs) || logs.length === 0) {
                     container.innerHTML = "<p style='color: #666;'>No recent changes recorded.</p>";
                     return;
                 }
 
                 container.innerHTML = logs.map(log => {
                     const date = new Date(log.date).toLocaleDateString(undefined, {
-                        month: 'short', day: 'numeric', year: 'numeric'
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
                     });
-                    
-                    const formattedText = log.text.replace(/\*\*(.*?)\*\*/g, '<span class="b">$1</span>');
 
                     return `
-                        <div class="log-item ${log.type}">
+                        <div class="log-item ${getLogClass(log.changeType)}">
                             <div class="log-content">
                                 <div class="log-indicator"></div>
-                                <div class="log-text">${formattedText}</div>
+                                <div class="log-text">${getLogText(log)}</div>
                             </div>
                             <div class="log-date">${date}</div>
                         </div>
@@ -115,6 +170,7 @@
                 console.error("Failed to load changelog:", err);
             }
         }
+
         loadChangelog();
     </script>
 </body>
