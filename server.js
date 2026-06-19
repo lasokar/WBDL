@@ -1244,6 +1244,13 @@ app.get('/api/leaderboard', async (req, res) => {
             WITH PlayerStats AS (
                 SELECT 
                     u.username,
+                    u.display_name,
+                    u.role,
+                    u.icon_type,
+                    u.icon_id,
+                    u.color1,
+                    u.color2,
+                    u.glow,
                     SUM(
                         CASE 
                             WHEN d.position > 150 THEN 0
@@ -1292,7 +1299,7 @@ app.get('/api/leaderboard', async (req, res) => {
                 JOIN records r ON u.id = r.user_id
                 JOIN demons d ON r.demon_id = d.id
                 WHERE r.status = 'accepted' AND r.list_type = $1 AND d.list_type = $1
-                GROUP BY u.id, u.username
+                GROUP BY u.id, u.username, u.display_name, u.role, u.icon_type, u.icon_id, u.color1, u.color2, u.glow
             ),
             RankedPlayers AS (
                 SELECT 
@@ -1309,6 +1316,15 @@ app.get('/api/leaderboard', async (req, res) => {
         
         const leaderboard = result.rows.map(row => ({
             ...row,
+            displayName: row.display_name || row.username,
+            role: row.role || '',
+            icon: {
+                type: row.icon_type || 'cube',
+                id: readProfileInt(row.icon_id, 1),
+                color1: readProfileInt(row.color1, 12),
+                color2: readProfileInt(row.color2, 3),
+                glow: readProfileInt(row.glow, -1),
+            },
             total_points: parseFloat(row.total_points || 0).toFixed(2),
             rank: parseInt(row.leaderboard_rank)
         }));
@@ -1341,7 +1357,15 @@ app.get('/api/demons/:id', async (req, res) => {
         }
 
         const recordsResult = await pool.query(`
-            SELECT records.*, users.username 
+            SELECT records.*,
+                   users.username,
+                   users.display_name,
+                   users.role,
+                   users.icon_type,
+                   users.icon_id,
+                   users.color1,
+                   users.color2,
+                   users.glow
             FROM records 
             JOIN users ON records.user_id = users.id 
             WHERE records.demon_id = $1 AND records.status = 'accepted' AND records.list_type = $2
@@ -1364,10 +1388,23 @@ app.get('/api/demons/:id', async (req, res) => {
                 : null;
         }
 
+        const formattedRecords = recordsResult.rows.map(row => ({
+            ...row,
+            displayName: row.display_name || row.username,
+            role: row.role || '',
+            icon: {
+                type: row.icon_type || 'cube',
+                id: readProfileInt(row.icon_id, 1),
+                color1: readProfileInt(row.color1, 12),
+                color2: readProfileInt(row.color2, 3),
+                glow: readProfileInt(row.glow, -1),
+            },
+        }));
+
         res.json({ 
             ...demon, 
             showcase_link,
-            records: recordsResult.rows 
+            records: formattedRecords 
         });
 
     } catch (err) {
