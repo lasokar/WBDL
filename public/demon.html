@@ -1008,9 +1008,11 @@
                     const verifier = records[0];
                     normalRecords = records.slice(1);
 
+                    const verifierDisplayName = getDisplayName(verifier) || verifier.username;
+
                     verifierContainer.innerHTML = `
                         <div class="verifier-row">
-                            <span>Verifier: <a href="${getProfileUrl(verifier.username)}">${escapeHtml(verifier.username)}</a></span>
+                            <span>Verifier: <a href="${getProfileUrl(verifier.username)}">${escapeHtml(verifierDisplayName)}</a></span>
                         </div>
                     `;
                 }
