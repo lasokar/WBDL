@@ -27,7 +27,7 @@
     <link rel="stylesheet" href="/style.css">
     
     <style>
-        :root { --wbdl-header-height: 0px; }
+        :root { --wbdl-header-height: 72px; }
 
         .page-content {
             max-width: 1000px;
@@ -214,8 +214,7 @@
                 grid-row: 1;
                 text-align: left;
                 margin-top: 20px;
-                padding: 0 0 15px;
-                border-bottom: 1px solid var(--border);
+                padding: 0px;
                 min-height: 150px;
                 box-sizing: border-box;
             }
@@ -390,6 +389,24 @@
                 flex-shrink: 0;
             }
 
+
+            body.impossible-list .page-content {
+                grid-template-rows: auto minmax(0, 1fr);
+            }
+
+            body.impossible-list .list-tabs {
+                display: none !important;
+            }
+
+            body.impossible-list #list-container,
+            body.impossible-list #level-viewer-panel {
+                grid-row: 1 / span 2;
+            }
+
+            body.impossible-list .staff-iframe-panel {
+                grid-row: 2;
+            }
+
             .wr-badge {
                 margin-left: auto;
                 align-self: center;
@@ -462,16 +479,66 @@
             document.body.classList.add('impossible-list');
             
             document.getElementById('headline-text').innerText = "Web Browser ILL";
-            document.getElementById('subheadline-text').innerText = "...the human limit of Web Dashers";
+            document.getElementById('subheadline-text').innerText = "The human limit of Web Dashers. Give these levels a try... if you dare >:)";
         }
 
         const desktopLayoutQuery = window.matchMedia('(min-width: 1500px)');
         let selectedDemonId = '';
+        let lastKnownHeaderHeight = 72;
 
         function updateHeaderHeightVar() {
             const header = document.getElementById('global-nav');
-            const height = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
-            document.documentElement.style.setProperty('--wbdl-header-height', `${height}px`);
+            const measuredHeight = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
+
+            if (measuredHeight > 0) {
+                lastKnownHeaderHeight = measuredHeight;
+            }
+
+            document.documentElement.style.setProperty('--wbdl-header-height', `${lastKnownHeaderHeight}px`);
+        }
+
+        function initHeaderHeightTracking() {
+            const header = document.getElementById('global-nav');
+
+            updateHeaderHeightVar();
+
+            if (header) {
+                if ('ResizeObserver' in window) {
+                    const resizeObserver = new ResizeObserver(() => updateHeaderHeightVar());
+                    resizeObserver.observe(header);
+                }
+
+                if ('MutationObserver' in window) {
+                    const mutationObserver = new MutationObserver(() => {
+                        requestAnimationFrame(updateHeaderHeightVar);
+                    });
+
+                    mutationObserver.observe(header, {
+                        childList: true,
+                        subtree: true,
+                        attributes: true
+                    });
+                }
+            }
+
+            let frames = 0;
+            const settleHeaderHeight = () => {
+                updateHeaderHeightVar();
+                frames += 1;
+
+                if (frames < 90) {
+                    requestAnimationFrame(settleHeaderHeight);
+                }
+            };
+
+            requestAnimationFrame(settleHeaderHeight);
+
+            window.addEventListener('load', () => {
+                updateHeaderHeightVar();
+                setTimeout(updateHeaderHeightVar, 50);
+                setTimeout(updateHeaderHeightVar, 250);
+                setTimeout(updateHeaderHeightVar, 1000);
+            });
         }
 
         function shrinkSingleLineToFit(el, minPx = 10) {
@@ -746,6 +813,7 @@
                 updateHeaderHeightVar();
                 renderDemons();
                 ensureStaffFrameLoaded();
+                requestAnimationFrame(updateHeaderHeightVar);
 
                 if (isDesktopEmbeddedLayout()) {
                     ensureDefaultDemonSelected();
@@ -778,6 +846,7 @@
             fitLevelCardText();
         });
 
+        initHeaderHeightTracking();
         removeStaleIdParamFromUrl();
         loadDemons();
     </script>

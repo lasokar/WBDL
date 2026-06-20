@@ -8,7 +8,7 @@ async function loadNavbar() {
     const isImpossibleList = window.location.hostname.includes('impossible');
 
     const themeColor = isImpossibleList ? "#ff4444" : "#00e676";
-    const brandName = isImpossibleList ? "WBDL Impossible" : "Web Browser Demonlist";
+    const brandName = isImpossibleList ? "WBDL Impossible List" : "Web Browser Demonlist";
 
     const brandIcon = isImpossibleList ? "/assets/impossible.png" : "/assets/icon.png";
 
