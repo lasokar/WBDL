@@ -1725,18 +1725,99 @@
                 return canvas;
             }
 
+            const renderedIconCache = new Map();
+            const RENDERED_ICON_CACHE_LIMIT = 420;
+
+            function getRenderedIconCacheKey(icon = {}, options = {}) {
+                const quality = options.quality === 'uhd' ? 'uhd' : 'hd';
+                const type = icon.type || 'cube';
+                const id = Math.max(1, parseInt(icon.id, 10) || 1);
+                const color1 = Number.isNaN(parseInt(icon.color1, 10)) ? 12 : parseInt(icon.color1, 10);
+                const color2 = Number.isNaN(parseInt(icon.color2, 10)) ? 3 : parseInt(icon.color2, 10);
+                const glow = Number.isNaN(parseInt(icon.glow, 10)) ? -1 : parseInt(icon.glow, 10);
+                return [quality, type, id, color1, color2, glow].join(':');
+            }
+
+            function cloneRenderedCanvas(source) {
+                const clone = document.createElement('canvas');
+                clone.width = source.width;
+                clone.height = source.height;
+                clone.style.width = source.style.width;
+                clone.style.height = source.style.height;
+                clone.className = source.className || 'gd-icon-canvas';
+                clone.style.imageRendering = source.style.imageRendering || 'auto';
+
+                const ctx = clone.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(source, 0, 0);
+
+                return clone;
+            }
+
+            function trimRenderedIconCache() {
+                while (renderedIconCache.size > RENDERED_ICON_CACHE_LIMIT) {
+                    const oldestKey = renderedIconCache.keys().next().value;
+                    renderedIconCache.delete(oldestKey);
+                }
+            }
+
+            async function getCachedRenderedIcon(icon, options = {}) {
+                const key = getRenderedIconCacheKey(icon, options);
+                const cached = renderedIconCache.get(key);
+
+                if (cached) {
+                    const rendered = await cached;
+                    return cloneRenderedCanvas(rendered);
+                }
+
+                const renderPromise = renderIcon(icon, options);
+                renderedIconCache.set(key, renderPromise);
+
+                try {
+                    const rendered = await renderPromise;
+                    renderedIconCache.set(key, rendered);
+                    trimRenderedIconCache();
+                    return cloneRenderedCanvas(rendered);
+                } catch (err) {
+                    renderedIconCache.delete(key);
+                    throw err;
+                }
+            }
+
+            async function warmIcon(icon, options = {}) {
+                const key = getRenderedIconCacheKey(icon, options);
+                if (renderedIconCache.has(key)) return;
+                const renderPromise = renderIcon(icon, options);
+                renderedIconCache.set(key, renderPromise);
+
+                try {
+                    const rendered = await renderPromise;
+                    renderedIconCache.set(key, rendered);
+                    trimRenderedIconCache();
+                } catch (err) {
+                    renderedIconCache.delete(key);
+                }
+            }
+
             async function renderInto(host, icon, options = {}) {
                 if (!host) return;
+
+                const token = `${Date.now()}-${Math.random()}`;
+                host.dataset.renderToken = token;
                 host.textContent = '';
                 host.classList.add('is-loading');
-                const rendered = await renderIcon(icon, options);
+
+                const rendered = await getCachedRenderedIcon(icon, options);
+                if (host.dataset.renderToken !== token) return;
+
                 rendered.className = 'gd-icon-canvas';
                 rendered.style.imageRendering = 'auto';
                 host.classList.remove('is-loading');
                 host.replaceChildren(rendered);
             }
 
-            return { getCategories, loadColors, renderIcon, renderInto };
+            return { getCategories, loadColors, renderIcon, renderInto, warmIcon };
         })();
 
         const COUNTRIES = ["Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia", "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czechia", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini", "Ethiopia", "Fiji", "Finland", "France", "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa", "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan", "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City", "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"];
@@ -1748,8 +1829,50 @@
         let colorTarget = 'color1';
         let iconEntriesCache = {};
         let iconGridRenderToken = 0;
+        let iconWarmupToken = 0;
         let iconPage = 0;
         let iconPageCount = 1;
+
+        function runWhenIdle(callback) {
+            if ('requestIdleCallback' in window) {
+                window.requestIdleCallback(callback, { timeout: 900 });
+            } else {
+                setTimeout(callback, 60);
+            }
+        }
+
+        function getGridIconRenderPayload(type, id) {
+            return normalizeIcon({ ...draftIcon, type, id });
+        }
+
+        async function warmIconPage(type, entries, page, token) {
+            if (token !== iconWarmupToken || page < 0 || page >= iconPageCount) return;
+
+            const pageEntries = entries.slice(page * ICONS_PER_PAGE, (page + 1) * ICONS_PER_PAGE);
+            const concurrency = 6;
+
+            for (let i = 0; i < pageEntries.length; i += concurrency) {
+                if (token !== iconWarmupToken) return;
+
+                const batch = pageEntries.slice(i, i + concurrency);
+                await Promise.all(batch.map(entry => (
+                    WBDLIconRenderer.warmIcon(getGridIconRenderPayload(type, entry.id))
+                )));
+            }
+        }
+
+        function scheduleNearbyIconPageWarmup(type, entries, token) {
+            runWhenIdle(async () => {
+                if (token !== iconWarmupToken) return;
+
+                const pagesToWarm = [iconPage + 1, iconPage - 1]
+                    .filter(page => page >= 0 && page < iconPageCount);
+
+                for (const page of pagesToWarm) {
+                    await warmIconPage(type, entries, page, token);
+                }
+            });
+        }
 
         function switchSettingsTab(tab) {
             document.getElementById('tab-account').classList.toggle('active', tab === 'account');
@@ -2100,11 +2223,11 @@
 
         async function renderIconChoiceGrid() {
             const token = ++iconGridRenderToken;
+            const warmToken = ++iconWarmupToken;
             const type = getActiveIconBrowseType();
             const grid = document.getElementById('modal-icon-grid');
             grid.innerHTML = `<div class="picker-status">Loading...</div>`;
             renderGamemodeButtons();
-            await updateModalPreview();
 
             const entries = await getIconEntries(type);
 
@@ -2154,9 +2277,11 @@
                 if (token !== iconGridRenderToken) return;
                 const host = document.getElementById(`icon-choice-${type}-${entry.id}`);
                 if (host) {
-                    WBDLIconRenderer.renderInto(host, { ...draftIcon, type, id: entry.id });
+                    WBDLIconRenderer.renderInto(host, getGridIconRenderPayload(type, entry.id));
                 }
             }
+
+            scheduleNearbyIconPageWarmup(type, entries, warmToken);
         }
 
         function updateIconPageControls() {
@@ -2188,15 +2313,20 @@
             const grid = document.getElementById('modal-icon-grid');
             if (!grid || !grid.children.length) return;
 
+            const token = ++iconGridRenderToken;
+            const warmToken = ++iconWarmupToken;
             const entries = await getIconEntries(type);
             const pageEntries = entries.slice(iconPage * ICONS_PER_PAGE, (iconPage + 1) * ICONS_PER_PAGE);
 
-            for (const entry of pageEntries) {
+            await Promise.all(pageEntries.map(entry => {
+                if (token !== iconGridRenderToken) return Promise.resolve();
                 const host = document.getElementById(`icon-choice-${type}-${entry.id}`);
-                if (host) {
-                    await WBDLIconRenderer.renderInto(host, { ...draftIcon, type, id: entry.id });
-                }
-            }
+                return host
+                    ? WBDLIconRenderer.renderInto(host, getGridIconRenderPayload(type, entry.id))
+                    : Promise.resolve();
+            }));
+
+            scheduleNearbyIconPageWarmup(type, entries, warmToken);
         }
 
         function getColorObject(colors, id, fallback = { r: 255, g: 255, b: 255 }) {
