@@ -3,6 +3,13 @@ async function loadNavbar() {
     if (!navContainer) return;
 
     const res = await fetch('/api/me');
+
+    if (res.status === 429) {
+        const rateLimited = await fetch('/ratelimited.html');
+        document.documentElement.innerHTML = await rateLimited.text();
+        return;
+    }
+
     const user = await res.json();
 
     const isImpossibleList = window.location.hostname.includes('impossible');
