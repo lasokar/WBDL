@@ -77,6 +77,49 @@ const cleanProfileIcon = (icon = {}) => {
     return { type, id, color1, color2, glow };
 };
 
+
+function getLevelUpdateFromId(levelId) {
+    const id = parseInt(levelId, 10);
+    if (Number.isNaN(id)) return null;
+
+    const ranges = [
+        { version: '1.0', min: 128, max: 1941 },
+        { version: '1.1', min: 1942, max: 10043 },
+        { version: '1.2', min: 10049, max: 63415 },
+        { version: '1.3', min: 63419, max: 121068 },
+        { version: '1.4', min: 121074, max: 184425 },
+        { version: '1.5', min: 184440, max: 420780 },
+        { version: '1.6', min: 420781, max: 827308 },
+        { version: '1.7', min: 827316, max: 1627362 },
+        { version: '1.8', min: 1627371, max: 2810918 },
+        { version: '1.9', min: 2810991, max: 11020426 },
+        { version: '2.0', min: 11020438, max: 28356225 },
+        { version: '2.1', min: 28356243, max: 97454397 },
+        { version: '2.2', min: 97454398, max: Infinity },
+    ];
+
+    const match = ranges.find(range => id >= range.min && id <= range.max);
+    return match ? match.version : null;
+}
+
+async function getEstimatedLevelUploadDate(levelId) {
+    const id = parseInt(levelId, 10);
+    if (Number.isNaN(id)) return null;
+
+    try {
+        const response = await axios.get(`https://history.geometrydash.eu/api/v1/date/level/${id}`, {
+            timeout: 4500,
+            validateStatus: status => status >= 200 && status < 500
+        });
+
+        if (response.status !== 200 || !response.data) return null;
+        return response.data;
+    } catch (err) {
+        console.error(`GDHistory lookup failed for level ${id}:`, err.message);
+        return null;
+    }
+}
+
 const serializeProfileUser = (user) => ({
     displayName: user.display_name || '',
     bio: user.bio || '',
@@ -1401,9 +1444,16 @@ app.get('/api/demons/:id', async (req, res) => {
             },
         }));
 
+        const [levelUpdate, uploadDateEstimate] = await Promise.all([
+            Promise.resolve(getLevelUpdateFromId(demon.level_id)),
+            getEstimatedLevelUploadDate(demon.level_id)
+        ]);
+
         res.json({ 
             ...demon, 
             showcase_link,
+            level_update: levelUpdate,
+            upload_date_estimate: uploadDateEstimate,
             records: formattedRecords 
         });
 
