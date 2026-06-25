@@ -354,18 +354,6 @@ async function loadNavbar() {
                 flex: 0 0 auto;
             }
 
-            #global-nav .nav-time-machine-button {
-                background: transparent !important;
-                border: 0 !important;
-                padding: 0 !important;
-                color: #c3c8cf !important;
-                text-decoration: none !important;
-                font-weight: 500 !important;
-                font-size: 0.98em !important;
-                font-family: inherit !important;
-                cursor: pointer !important;
-            }
-
             #global-nav .dropbtn {
                 width: auto !important;
                 margin-top: 0 !important;
@@ -405,7 +393,7 @@ async function loadNavbar() {
                 </a>
                 <a href="/leaderboard" style="${navLink}">Leaderboard</a>
                 <a href="/changelog" style="${navLink}">Changelog</a>
-                <button type="button" class="nav-time-machine-button" onclick="openTimeMachine()" style="${navLink} width: auto; margin-top: 0; background: transparent; border: 0; padding: 0; cursor: pointer; font-family: inherit;">Time Machine</button>
+                <a href="javascript:openTimeMachine()" style="${navLink}">Time Machine</a>
                 ${listSwapLink}
             </div>
             <div id="user-nav">${userSection}</div>
