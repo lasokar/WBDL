@@ -121,18 +121,47 @@ async function getEstimatedLevelUploadDate(levelId) {
 }
 
 
-const TIME_MACHINE_MIN_DATE = '2026-06-15';
-
 function parseTimeMachineDate(value) {
     const raw = String(value || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
 
-    const min = new Date(`${TIME_MACHINE_MIN_DATE}T00:00:00.000Z`);
     const selected = new Date(`${raw}T23:59:59.999Z`);
     const now = new Date();
 
-    if (Number.isNaN(selected.getTime()) || selected < min || selected > now) return null;
+    if (Number.isNaN(selected.getTime()) || selected > now) return null;
     return selected;
+}
+
+function getDateInputValue(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+    return date.toISOString().slice(0, 10);
+}
+
+async function getTimeMachineMinDateValue(list) {
+    const result = await pool.query(`
+        SELECT MIN(created_at) AS first_created_at
+        FROM changelog
+        WHERE list_type = $1
+          AND change_type IN ('added', 'moved', 'deleted')
+    `, [list]);
+
+    const firstCreatedAt = result.rows[0]?.first_created_at;
+    if (!firstCreatedAt) return null;
+
+    const minDate = new Date(firstCreatedAt);
+    if (Number.isNaN(minDate.getTime())) return null;
+
+    minDate.setUTCDate(minDate.getUTCDate() - 1);
+    return getDateInputValue(minDate);
+}
+
+function isTimeMachineDateAllowed(selectedDate, minDateValue) {
+    if (!selectedDate || !minDateValue) return false;
+
+    const minDate = new Date(`${minDateValue}T00:00:00.000Z`);
+    if (Number.isNaN(minDate.getTime())) return false;
+
+    return selectedDate >= minDate;
 }
 
 function normalizeDemonSnapshotRows(rows = []) {
@@ -347,14 +376,31 @@ app.get('/api/demons', async (req, res) => {
         const currentRows = await queryCurrentDemonSnapshotRows(list);
 
         if (timeMachineDate) {
-            const historicalRows = await buildHistoricalDemonSnapshot(currentRows, list, timeMachineDate);
-            return res.json(historicalRows);
+            const minDateValue = await getTimeMachineMinDateValue(list);
+
+            if (isTimeMachineDateAllowed(timeMachineDate, minDateValue)) {
+                const historicalRows = await buildHistoricalDemonSnapshot(currentRows, list, timeMachineDate);
+                return res.json(historicalRows);
+            }
         }
 
         res.json(currentRows);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Database error" });
+    }
+});
+
+
+app.get('/api/time-machine/min-date', async (req, res) => {
+    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+
+    try {
+        const minDate = await getTimeMachineMinDateValue(list);
+        res.json({ min_date: minDate });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to fetch time machine minimum date' });
     }
 });
 
@@ -1579,17 +1625,21 @@ app.get('/api/demons/:id', async (req, res) => {
         const timeMachineDate = parseTimeMachineDate(req.query.date || req.query.time_machine_date);
 
         if (timeMachineDate) {
-            const currentRows = await queryCurrentDemonSnapshotRows(list);
-            const historicalRows = await buildHistoricalDemonSnapshot(currentRows, list, timeMachineDate);
-            const historicalDemon = historicalRows.find(row => Number(row.id) === Number(demonId));
+            const minDateValue = await getTimeMachineMinDateValue(list);
 
-            if (!historicalDemon) {
-                return res.status(404).json({ error: "This level did not exist on the selected time machine date." });
+            if (isTimeMachineDateAllowed(timeMachineDate, minDateValue)) {
+                const currentRows = await queryCurrentDemonSnapshotRows(list);
+                const historicalRows = await buildHistoricalDemonSnapshot(currentRows, list, timeMachineDate);
+                const historicalDemon = historicalRows.find(row => Number(row.id) === Number(demonId));
+
+                if (!historicalDemon) {
+                    return res.status(404).json({ error: "This level did not exist on that date." });
+                }
+
+                demon.position = historicalDemon.position;
+                demon.time_machine_snapshot = true;
+                demon.time_machine_date = req.query.date || req.query.time_machine_date;
             }
-
-            demon.position = historicalDemon.position;
-            demon.time_machine_snapshot = true;
-            demon.time_machine_date = req.query.date || req.query.time_machine_date;
         }
 
         const recordsResult = await pool.query(`

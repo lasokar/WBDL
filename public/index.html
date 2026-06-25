@@ -188,6 +188,11 @@
             display: none;
         }
 
+
+        body.impossible-list .list-tabs {
+            display: none !important;
+        }
+
         @media (min-width: 1500px) {
             html,
             body {
@@ -483,14 +488,59 @@
             return `${year}-${month}-${day}`;
         }
 
-        function isValidTimeMachineDate(value) {
+        function isValidTimeMachineDate(value, minDateValue = '2026-01-01') {
             const selected = parseDateInputValue(value);
             if (!selected) return false;
 
-            const min = parseDateInputValue('2026-06-15');
+            const min = parseDateInputValue(minDateValue || '2026-01-01');
             const max = parseDateInputValue(getTodayDateInputValue());
 
             return selected >= min && selected <= max;
+        }
+
+
+        let indexTimeMachineMinDateCache = null;
+        let indexTimeMachineMinDatePromise = null;
+
+        async function getIndexTimeMachineMinDate() {
+            if (window.getTimeMachineMinDate) {
+                return window.getTimeMachineMinDate();
+            }
+
+            if (indexTimeMachineMinDateCache) return indexTimeMachineMinDateCache;
+
+            if (!indexTimeMachineMinDatePromise) {
+                indexTimeMachineMinDatePromise = fetch('/api/time-machine/min-date', { cache: 'no-store' })
+                    .then(res => res.ok ? res.json() : null)
+                    .then(data => {
+                        const minDate = data && data.min_date;
+                        indexTimeMachineMinDateCache = parseDateInputValue(minDate) ? minDate : '2026-01-01';
+                        return indexTimeMachineMinDateCache;
+                    })
+                    .catch(() => {
+                        indexTimeMachineMinDateCache = '2026-01-01';
+                        return indexTimeMachineMinDateCache;
+                    });
+            }
+
+            return indexTimeMachineMinDatePromise;
+        }
+
+        async function isValidTimeMachineDateAsync(value) {
+            return isValidTimeMachineDate(value, await getIndexTimeMachineMinDate());
+        }
+
+        async function redirectInvalidTimeMachineDateIfNeeded() {
+            const raw = new URLSearchParams(window.location.search).get('date') || '';
+            if (!raw) return false;
+
+            if (await isValidTimeMachineDateAsync(raw)) {
+                timeMachineDate = raw;
+                return false;
+            }
+
+            removeInvalidTimeMachineDateFromUrl();
+            return true;
         }
 
         function removeInvalidTimeMachineDateFromUrl() {
@@ -602,8 +652,8 @@
             }
         }
 
-        window.applyTimeMachineDate = function applyTimeMachineDate(date) {
-            if (date && !isValidTimeMachineDate(date)) {
+        window.applyTimeMachineDate = async function applyTimeMachineDate(date) {
+            if (date && !(await isValidTimeMachineDateAsync(date))) {
                 removeInvalidTimeMachineDateFromUrl();
                 return;
             }
@@ -804,7 +854,7 @@
             });
 
             if (filteredDemons.length === 0) {
-                container.innerHTML = `<p style="text-align: center; color: var(--text-muted); margin-top: 20px;">No levels exist here...</p>`;
+                container.innerHTML = `<p style="text-align: center; color: var(--text-muted); margin-top: 20px;">No levels currently exist in this section.</p>`;
                 return;
             }
 
@@ -903,6 +953,8 @@
         }
 
         async function loadDemons() {
+            if (await redirectInvalidTimeMachineDateIfNeeded()) return;
+
             try {
                 const response = await fetch(getDemonsApiUrl());
                 allDemons = await response.json();
@@ -910,7 +962,7 @@
 
                 const tabsContainer = document.getElementById('list-tabs-container');
                 if (tabsContainer) {
-                    tabsContainer.style.display = 'flex';
+                    tabsContainer.style.display = isImpossibleList ? 'none' : 'flex';
                 }
 
                 updateHeaderHeightVar();
