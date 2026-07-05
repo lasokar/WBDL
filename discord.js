@@ -1,6 +1,15 @@
 const { randomBytes } = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 const API = 'https://discord.com/api/v10';
+
+const syncLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many sync requests, slow down.' },
+});
 
 const ROLE_TIERS = [
     { max: 1, roleId: '1517234399739908147' },
@@ -110,14 +119,13 @@ module.exports = function registerDiscord(app, pool) {
                 JOIN records r ON u.id = r.user_id
                 JOIN demons d ON r.demon_id = d.id
                 WHERE r.status = 'accepted' AND r.list_type = 'primary' AND d.list_type = 'primary'
-                  AND u.discord_id IS NOT NULL
                 GROUP BY u.id, u.discord_id
             ),
             Ranked AS (
                 SELECT *, RANK() OVER (ORDER BY total_points DESC) as rank
                 FROM PlayerStats
             )
-            SELECT discord_id, rank FROM Ranked;
+            SELECT discord_id, rank FROM Ranked WHERE discord_id IS NOT NULL;
         `;
         const { rows } = await pool.query(query);
         const map = new Map();
@@ -324,6 +332,6 @@ module.exports = function registerDiscord(app, pool) {
             res.status(500).json({ error: 'Sync failed' });
         }
     };
-    app.get('/api/discord/sync', syncHandler);
-    app.post('/api/discord/sync', syncHandler);
+    app.get('/api/discord/sync', syncLimiter, syncHandler);
+    app.post('/api/discord/sync', syncLimiter, syncHandler);
 };
