@@ -3,12 +3,12 @@ const { randomBytes } = require('crypto');
 const API = 'https://discord.com/api/v10';
 
 const ROLE_TIERS = [
-    { max: 1, roleId: '' },
-    { max: 2, roleId: '' },
-    { max: 3, roleId: '' },
-    { max: 10, roleId: '' },
-    { max: 25, roleId: '' },
-    { max: 100, roleId: '' },
+    { max: 1, roleId: '1517234399739908147' },
+    { max: 2, roleId: '1523382884247797780' },
+    { max: 3, roleId: '1523382966254833816' },
+    { max: 10, roleId: '1523383071368544407' },
+    { max: 25, roleId: '1523383210841735228' },
+    { max: 100, roleId: '1523383258044305438' },
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
