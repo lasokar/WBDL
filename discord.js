@@ -1,14 +1,23 @@
 const { randomBytes } = require('crypto');
+const rateLimit = require('express-rate-limit');
 
 const API = 'https://discord.com/api/v10';
 
+const syncLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many sync requests, slow down.' },
+});
+
 const ROLE_TIERS = [
-    { max: 1, roleId: '' },
-    { max: 2, roleId: '' },
-    { max: 3, roleId: '' },
-    { max: 10, roleId: '' },
-    { max: 25, roleId: '' },
-    { max: 100, roleId: '' },
+    { max: 1, roleId: '1517234399739908147' },
+    { max: 2, roleId: '1523382884247797780' },
+    { max: 3, roleId: '1523382966254833816' },
+    { max: 10, roleId: '1523383071368544407' },
+    { max: 25, roleId: '1523383210841735228' },
+    { max: 100, roleId: '1523383258044305438' },
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -110,14 +119,13 @@ module.exports = function registerDiscord(app, pool) {
                 JOIN records r ON u.id = r.user_id
                 JOIN demons d ON r.demon_id = d.id
                 WHERE r.status = 'accepted' AND r.list_type = 'primary' AND d.list_type = 'primary'
-                  AND u.discord_id IS NOT NULL
                 GROUP BY u.id, u.discord_id
             ),
             Ranked AS (
                 SELECT *, RANK() OVER (ORDER BY total_points DESC) as rank
                 FROM PlayerStats
             )
-            SELECT discord_id, rank FROM Ranked;
+            SELECT discord_id, rank FROM Ranked WHERE discord_id IS NOT NULL;
         `;
         const { rows } = await pool.query(query);
         const map = new Map();
@@ -225,7 +233,7 @@ module.exports = function registerDiscord(app, pool) {
             }
 
             await pool.query(
-                'UPDATE users SET discord_id = $1, discord_username = $2 WHERE id = $3',
+                'UPDATE users SET discord_id = $1, discord_username = $2, social_discord = $2 WHERE id = $3',
                 [dUser.id, dUser.username, req.session.userId]
             );
 
@@ -272,7 +280,7 @@ module.exports = function registerDiscord(app, pool) {
             );
             const discordId = rows[0] && rows[0].discord_id;
             await pool.query(
-                'UPDATE users SET discord_id = NULL, discord_username = NULL WHERE id = $1',
+                'UPDATE users SET discord_id = NULL, discord_username = NULL, social_discord = NULL WHERE id = $1',
                 [req.session.userId]
             );
             if (discordId) clearRoles(discordId).catch(() => {});
@@ -299,6 +307,6 @@ module.exports = function registerDiscord(app, pool) {
             res.status(500).json({ error: 'Sync failed' });
         }
     };
-    app.get('/api/discord/sync', syncHandler);
-    app.post('/api/discord/sync', syncHandler);
+    app.get('/api/discord/sync', syncLimiter, syncHandler);
+    app.post('/api/discord/sync', syncLimiter, syncHandler);
 };
