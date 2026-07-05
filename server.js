@@ -350,11 +350,12 @@ const serializeProfileUser = (user) => ({
     bio: user.bio || '',
     pronouns: user.pronouns || '',
     country: user.country || '',
+    discordUsername: user.discord_username || '',
     socialLinks: {
         youtube: user.social_youtube || '',
         twitter: user.social_twitter || '',
         twitch: user.social_twitch || '',
-        discord: user.social_discord || '',
+        discord: user.discord_username || '',
         reddit: user.social_reddit || '',
         gdbrowser: user.social_gdbrowser || '',
     },
@@ -1383,7 +1384,7 @@ app.get('/api/profile/:username', async (req, res) => {
         const userResult = await pool.query(
             `SELECT id, username, created_at, role,
                     display_name, bio, pronouns, country,
-                    social_youtube, social_twitter, social_twitch, social_discord, social_reddit, social_gdbrowser,
+                    social_youtube, social_twitter, social_twitch, social_discord, social_reddit, social_gdbrowser, discord_username,
                     icon_type, icon_id, color1, color2, glow
              FROM users WHERE username = $1`, 
             [username]
@@ -1716,7 +1717,7 @@ app.get('/api/settings/profile', async (req, res) => {
         const userResult = await pool.query(`
             SELECT username,
                    display_name, bio, pronouns, country,
-                   social_youtube, social_twitter, social_twitch, social_discord, social_reddit, social_gdbrowser,
+                   social_youtube, social_twitter, social_twitch, social_discord, social_reddit, social_gdbrowser, discord_username,
                    icon_type, icon_id, color1, color2, glow
             FROM users
             WHERE id = $1

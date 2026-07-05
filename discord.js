@@ -187,7 +187,7 @@ module.exports = function registerDiscord(app, pool) {
             client_id: c.clientId,
             redirect_uri: c.redirectUri,
             response_type: 'code',
-            scope: 'identify guilds.join',
+            scope: 'identify',
             state,
             prompt: 'consent',
         });
@@ -250,17 +250,12 @@ module.exports = function registerDiscord(app, pool) {
                 `
                 UPDATE users
                 SET discord_id = $1::varchar,
-                    discord_username = $2::varchar
+                    discord_username = $2::varchar,
+                    social_discord = $2::varchar
                 WHERE id = $3::integer
                 `,
                 [discordId, discordUsername, userId]
             );
-
-            await fetch(`${API}/guilds/${c.guildId}/members/${discordId}`, {
-                method: 'PUT',
-                headers: botHeaders(),
-                body: JSON.stringify({ access_token: token.access_token }),
-            }).catch(() => {});
 
             syncRoles(discordId).catch((e) => console.error('post-link sync', e));
 
@@ -305,7 +300,7 @@ module.exports = function registerDiscord(app, pool) {
             );
             const discordId = rows[0] && rows[0].discord_id;
             await pool.query(
-                'UPDATE users SET discord_id = NULL, discord_username = NULL WHERE id = $1::integer',
+                'UPDATE users SET discord_id = NULL, discord_username = NULL, social_discord = NULL WHERE id = $1::integer',
                 [userId]
             );
             if (discordId) clearRoles(discordId).catch(() => {});

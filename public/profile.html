@@ -1396,7 +1396,7 @@
                 socialParts.push(makeSocialIcon('twitter', 'Twitter', twitterHref));
             }
 
-            const discordValue = String(socialLinks.discord || '').trim();
+            const discordValue = String(data.discordUsername || socialLinks.discord || '').trim();
             if (discordValue) {
                 socialParts.push(makeDiscordIcon(discordValue));
             }
