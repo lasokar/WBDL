@@ -1183,7 +1183,7 @@
                         <div><label>YouTube</label><input type="text" id="social-youtube" placeholder="Youtube @handle" maxlength="200"></div>
                         <div><label>Twitter / X</label><input type="text" id="social-twitter" placeholder="Twitter @handle" maxlength="200"></div>
                         <div><label>Twitch</label><input type="text" id="social-twitch" placeholder="Twitch username" maxlength="200"></div>
-                        <div><label>Discord</label><input type="text" id="social-discord" placeholder="Discord username" maxlength="80"></div>
+                        <div><label>Discord</label><input type="text" id="social-discord" placeholder="Link your discord to display it on your profile." maxlength="80" disabled></div>
                         <div><label>Reddit</label><input type="text" id="social-reddit" placeholder="u/username" maxlength="200"></div>
                         <div><label>GDBrowser</label><input type="text" id="social-gdbrowser" placeholder="Geometry Dash username" maxlength="200"></div>
                     </div>
@@ -2488,13 +2488,16 @@
                     document.getElementById('discord-section').style.display = 'none';
                     return;
                 }
+                const discordField = document.getElementById('social-discord');
                 if (data.linked) {
                     linkBtn.style.display = 'none';
                     unlinkBtn.style.display = 'inline-block';
+                    if (discordField) discordField.value = data.username || '';
                     if (!flag) statusEl.textContent = 'Connected as ' + (data.username || 'Discord user') + '.';
                 } else {
                     linkBtn.style.display = 'inline-block';
                     unlinkBtn.style.display = 'none';
+                    if (discordField) discordField.value = '';
                 }
             } catch (_) {}
         }
@@ -2505,6 +2508,8 @@
                 showMessage('discord-status', 'Discord unlinked.', false);
                 document.getElementById('discord-link-btn').style.display = 'inline-block';
                 document.getElementById('discord-unlink-btn').style.display = 'none';
+                const discordField = document.getElementById('social-discord');
+                if (discordField) discordField.value = '';
             } else {
                 showMessage('discord-status', 'Could not unlink Discord.', true);
             }

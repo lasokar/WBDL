@@ -1749,7 +1749,6 @@ app.post('/api/settings/profile', async (req, res) => {
         youtube: cleanProfileText(socialLinks.youtube, 200),
         twitter: cleanProfileText(socialLinks.twitter, 200),
         twitch: cleanProfileText(socialLinks.twitch, 200),
-        discord: cleanProfileText(socialLinks.discord, 80),
         reddit: cleanProfileText(socialLinks.reddit, 200),
         gdbrowser: cleanProfileText(socialLinks.gdbrowser, 200),
         iconType: icon.type,
@@ -1769,15 +1768,14 @@ app.post('/api/settings/profile', async (req, res) => {
                 social_youtube = $5,
                 social_twitter = $6,
                 social_twitch = $7,
-                social_discord = $8,
-                social_reddit = $9,
-                social_gdbrowser = $10,
-                icon_type = $11,
-                icon_id = $12,
-                color1 = $13,
-                color2 = $14,
-                glow = $15
-            WHERE id = $16
+                social_reddit = $8,
+                social_gdbrowser = $9,
+                icon_type = $10,
+                icon_id = $11,
+                color1 = $12,
+                color2 = $13,
+                glow = $14
+            WHERE id = $15
         `, [
             profile.displayName,
             profile.bio,
@@ -1786,7 +1784,6 @@ app.post('/api/settings/profile', async (req, res) => {
             profile.youtube,
             profile.twitter,
             profile.twitch,
-            profile.discord,
             profile.reddit,
             profile.gdbrowser,
             profile.iconType,
