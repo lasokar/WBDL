@@ -121,7 +121,7 @@ module.exports = function registerDiscord(app, pool) {
         `;
         const { rows } = await pool.query(query);
         const map = new Map();
-        for (const row of rows) map.set(row.discord_id, parseInt(row.rank));
+        for (const row of rows) map.set(String(row.discord_id), parseInt(row.rank, 10));
         return map;
     }
 
@@ -132,7 +132,7 @@ module.exports = function registerDiscord(app, pool) {
 
         let linked;
         if (onlyDiscordId) {
-            linked = [{ discord_id: onlyDiscordId }];
+            linked = [{ discord_id: String(onlyDiscordId) }];
         } else {
             const { rows } = await pool.query(
                 'SELECT discord_id FROM users WHERE discord_id IS NOT NULL'
@@ -142,14 +142,15 @@ module.exports = function registerDiscord(app, pool) {
 
         const summary = { total: linked.length, updated: 0, skipped: 0, errors: 0 };
         for (const u of linked) {
-            const desired = roleForRank(rankMap.get(u.discord_id) || null);
+            const discordId = String(u.discord_id);
+            const desired = roleForRank(rankMap.get(discordId) || null);
             try {
-                const status = await reconcileMember(u.discord_id, desired);
+                const status = await reconcileMember(discordId, desired);
                 if (status === 'ok') summary.updated++;
                 else if (status === 'not_in_guild') summary.skipped++;
                 else summary.errors++;
             } catch (err) {
-                console.error('Discord sync error for', u.discord_id, err);
+                console.error('Discord sync error for', discordId, err);
                 summary.errors++;
             }
             await sleep(250);
@@ -160,7 +161,7 @@ module.exports = function registerDiscord(app, pool) {
     async function clearRoles(discordId) {
         if (!isConfigured()) return;
         try {
-            await reconcileMember(discordId, null);
+            await reconcileMember(String(discordId), null);
         } catch (err) {
             console.error('Discord clearRoles error for', discordId, err);
         }
@@ -216,26 +217,44 @@ module.exports = function registerDiscord(app, pool) {
             if (!userRes.ok) return res.redirect('/settings.html?discord=error');
             const dUser = await userRes.json();
 
+            const userId = Number.parseInt(req.session.userId, 10);
+            const discordId = String(dUser.id || '');
+            const discordUsername = String(dUser.username || '');
+
+            if (!Number.isInteger(userId) || !discordId) {
+                return res.redirect('/settings.html?discord=error');
+            }
+
             const existing = await pool.query(
-                'SELECT id FROM users WHERE discord_id = $1 AND id <> $2',
-                [dUser.id, req.session.userId]
+                `
+                SELECT id
+                FROM users
+                WHERE discord_id = $1::varchar
+                  AND id <> $2::integer
+                `,
+                [discordId, userId]
             );
             if (existing.rows.length > 0) {
                 return res.redirect('/settings.html?discord=taken');
             }
 
             await pool.query(
-                'UPDATE users SET discord_id = $1, discord_username = $2 WHERE id = $3',
-                [dUser.id, dUser.username, req.session.userId]
+                `
+                UPDATE users
+                SET discord_id = $1::varchar,
+                    discord_username = $2::varchar
+                WHERE id = $3::integer
+                `,
+                [discordId, discordUsername, userId]
             );
 
-            await fetch(`${API}/guilds/${c.guildId}/members/${dUser.id}`, {
+            await fetch(`${API}/guilds/${c.guildId}/members/${discordId}`, {
                 method: 'PUT',
                 headers: botHeaders(),
                 body: JSON.stringify({ access_token: token.access_token }),
             }).catch(() => {});
 
-            syncRoles(dUser.id).catch((e) => console.error('post-link sync', e));
+            syncRoles(discordId).catch((e) => console.error('post-link sync', e));
 
             res.redirect('/settings.html?discord=linked');
         } catch (err) {
@@ -247,9 +266,12 @@ module.exports = function registerDiscord(app, pool) {
     app.get('/api/discord/status', async (req, res) => {
         if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
         try {
+            const userId = Number.parseInt(req.session.userId, 10);
+            if (!Number.isInteger(userId)) return res.status(401).json({ error: 'Unauthorized' });
+
             const { rows } = await pool.query(
-                'SELECT discord_id, discord_username FROM users WHERE id = $1',
-                [req.session.userId]
+                'SELECT discord_id, discord_username FROM users WHERE id = $1::integer',
+                [userId]
             );
             const row = rows[0] || {};
             res.json({
@@ -266,14 +288,17 @@ module.exports = function registerDiscord(app, pool) {
     app.post('/api/discord/unlink', async (req, res) => {
         if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
         try {
+            const userId = Number.parseInt(req.session.userId, 10);
+            if (!Number.isInteger(userId)) return res.status(401).json({ error: 'Unauthorized' });
+
             const { rows } = await pool.query(
-                'SELECT discord_id FROM users WHERE id = $1',
-                [req.session.userId]
+                'SELECT discord_id FROM users WHERE id = $1::integer',
+                [userId]
             );
             const discordId = rows[0] && rows[0].discord_id;
             await pool.query(
-                'UPDATE users SET discord_id = NULL, discord_username = NULL WHERE id = $1',
-                [req.session.userId]
+                'UPDATE users SET discord_id = NULL, discord_username = NULL WHERE id = $1::integer',
+                [userId]
             );
             if (discordId) clearRoles(discordId).catch(() => {});
             res.json({ message: 'Unlinked' });
