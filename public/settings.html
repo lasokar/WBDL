@@ -1342,10 +1342,10 @@
                             <label>Discord</label>
                             <div class="discord-link-row">
                                 <div class="discord-field-wrap" title="Discord is managed by account linking.">
-                                    <input type="text" id="social-discord" placeholder="Link your discord account first!" maxlength="120" disabled readonly aria-readonly="true">
+                                    <input type="text" id="social-discord" placeholder="" maxlength="120" disabled readonly aria-readonly="true">
                                 </div>
                                 <div id="discord-actions" class="discord-inline-actions">
-                                    <button type="button" id="discord-link-btn" onclick="window.location.href='/api/discord/link'">Connect</button>
+                                    <button type="button" id="discord-link-btn" style="display:none;" onclick="window.location.href='/api/discord/link'">Connect</button>
                                     <button type="button" id="discord-unlink-btn" class="btn-danger" style="display:none;" onclick="unlinkDiscord()">Unlink</button>
                                 </div>
                             </div>
