@@ -469,6 +469,8 @@ if (process.env.NODE_ENV === 'production') {
 
 app.use(session(sessionConfig));
 
+require('./discord')(app, pool);
+
 async function sendVerificationEmail(targetEmail, username, link) {
     await resend.emails.send({
         from: 'Web Browser Demonlist <verify@webdemonlist.org>',
