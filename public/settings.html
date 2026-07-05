@@ -1189,6 +1189,16 @@
                     </div>
                 </div>
 
+                <div class="section" id="discord-section">
+                    <h2>Discord Connection</h2>
+                    <p class="helper">Link your Discord account to automatically receive leaderboard rank roles (Top 1, 2, 3, 10, 25, 100) in our server.</p>
+                    <div id="discord-status" class="msg"></div>
+                    <div id="discord-actions">
+                        <button type="button" id="discord-link-btn" onclick="window.location.href='/api/discord/link'">Link Discord</button>
+                        <button type="button" id="discord-unlink-btn" class="btn-danger" style="display:none;" onclick="unlinkDiscord()">Unlink Discord</button>
+                    </div>
+                </div>
+
                 <div class="section">
                     <h2>Icon</h2>
                     <p class="helper">Pick an icon that will be visible on your profile!</p>
@@ -2448,6 +2458,56 @@
             document.getElementById('social-gdbrowser').value = data.socialLinks?.gdbrowser || '';
 
             await setupIconControls(data);
+            loadDiscordStatus();
+        }
+
+        async function loadDiscordStatus() {
+            const statusEl = document.getElementById('discord-status');
+            const linkBtn = document.getElementById('discord-link-btn');
+            const unlinkBtn = document.getElementById('discord-unlink-btn');
+            if (!statusEl) return;
+
+            const params = new URLSearchParams(window.location.search);
+            const flag = params.get('discord');
+            if (flag) {
+                const messages = {
+                    linked: ['Discord linked successfully! Roles will update shortly.', false],
+                    error: ['Something went wrong linking Discord. Please try again.', true],
+                    taken: ['That Discord account is already linked to another user.', true],
+                };
+                const [text, isErr] = messages[flag] || ['', false];
+                if (text) showMessage('discord-status', text, isErr);
+                history.replaceState(null, '', window.location.pathname);
+            }
+
+            try {
+                const res = await fetch('/api/discord/status');
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.configured) {
+                    document.getElementById('discord-section').style.display = 'none';
+                    return;
+                }
+                if (data.linked) {
+                    linkBtn.style.display = 'none';
+                    unlinkBtn.style.display = 'inline-block';
+                    if (!flag) statusEl.textContent = 'Connected as ' + (data.username || 'Discord user') + '.';
+                } else {
+                    linkBtn.style.display = 'inline-block';
+                    unlinkBtn.style.display = 'none';
+                }
+            } catch (_) {}
+        }
+
+        async function unlinkDiscord() {
+            const res = await fetch('/api/discord/unlink', { method: 'POST' });
+            if (res.ok) {
+                showMessage('discord-status', 'Discord unlinked.', false);
+                document.getElementById('discord-link-btn').style.display = 'inline-block';
+                document.getElementById('discord-unlink-btn').style.display = 'none';
+            } else {
+                showMessage('discord-status', 'Could not unlink Discord.', true);
+            }
         }
 
         async function updateUsername() {
