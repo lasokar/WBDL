@@ -892,7 +892,7 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
             return res.status(400).json({ error: "This record does not belong to the active list layout configuration." });
         }
 
-        if (recordOwnerId === actorId && actorRole === 'moderator') {
+        if (recordOwnerId === actorId && actorRole !== 'owner') {
             await pool.query('ROLLBACK');
             return res.status(403).json({ error: "You cannot verify your own record!" });
         }
