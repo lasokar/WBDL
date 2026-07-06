@@ -198,10 +198,10 @@ module.exports = function registerDiscord(app, pool) {
         const { code, state } = req.query;
         if (!req.session.userId) return res.redirect('/login.html');
         if (!code || !state || state !== req.session.discordOAuthState) {
-            return res.redirect('/settings.html?discord=error');
+            return res.redirect('/account-settings?discord=error');
         }
         req.session.discordOAuthState = null;
-        if (!isConfigured()) return res.redirect('/settings.html?discord=error');
+        if (!isConfigured()) return res.redirect('/account-settings?discord=error');
 
         const c = cfg();
         try {
@@ -216,13 +216,13 @@ module.exports = function registerDiscord(app, pool) {
                     redirect_uri: c.redirectUri,
                 }),
             });
-            if (!tokenRes.ok) return res.redirect('/settings.html?discord=error');
+            if (!tokenRes.ok) return res.redirect('/account-settings?discord=error');
             const token = await tokenRes.json();
 
             const userRes = await fetch(`${API}/users/@me`, {
                 headers: { Authorization: `Bearer ${token.access_token}` },
             });
-            if (!userRes.ok) return res.redirect('/settings.html?discord=error');
+            if (!userRes.ok) return res.redirect('/account-settings?discord=error');
             const dUser = await userRes.json();
 
             const userId = Number.parseInt(req.session.userId, 10);
@@ -230,7 +230,7 @@ module.exports = function registerDiscord(app, pool) {
             const discordUsername = String(dUser.username || '');
 
             if (!Number.isInteger(userId) || !discordId) {
-                return res.redirect('/settings.html?discord=error');
+                return res.redirect('/account-settings?discord=error');
             }
 
             const existing = await pool.query(
@@ -243,7 +243,7 @@ module.exports = function registerDiscord(app, pool) {
                 [discordId, userId]
             );
             if (existing.rows.length > 0) {
-                return res.redirect('/settings.html?discord=taken');
+                return res.redirect('/account-settings?discord=taken');
             }
 
             await pool.query(
@@ -259,10 +259,10 @@ module.exports = function registerDiscord(app, pool) {
 
             syncRoles(discordId).catch((e) => console.error('post-link sync', e));
 
-            res.redirect('/settings.html?discord=linked');
+            res.redirect('/account-settings?discord=linked');
         } catch (err) {
             console.error('Discord callback error:', err);
-            res.redirect('/settings.html?discord=error');
+            res.redirect('/account-settings?discord=error');
         }
     });
 
