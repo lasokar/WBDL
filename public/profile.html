@@ -1968,7 +1968,7 @@
 
             for (const group of catalog) {
                 for (const tier of Array.isArray(group.tiers) ? group.tiers : []) {
-                    const label = [tier.name || `Badge ${tier.id}`, tier.description].filter(Boolean).join(' — ');
+                    const label = tier.name || `Badge ${tier.id}`;
                     options.push(`<option value="${escapeHtml(group.id)}:${Number(tier.id)}">${escapeHtml(label)}</option>`);
                 }
             }

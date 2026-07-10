@@ -1528,9 +1528,6 @@ app.post('/api/owner/users/:userId/badges', isOwner, async (req, res) => {
         const tier = (Array.isArray(group?.tiers) ? group.tiers : [])
             .find(item => Number(item.id) === tierId);
         if (!group || !tier) return res.status(404).json({ error: 'Badge not found.' });
-        if (group?.requirement?.type !== 'owner_only') {
-            return res.status(403).json({ error: 'This badge is awarded automatically.' });
-        }
 
         const targetResult = await pool.query('SELECT id FROM users WHERE id = $1', [targetUserId]);
         if (!targetResult.rows.length) return res.status(404).json({ error: 'User not found.' });
@@ -2752,7 +2749,6 @@ app.get('/api/profile/:username', async (req, res) => {
             }
             if (viewer?.role === 'owner' && list === 'primary') {
                 badgeCatalog = loadBadgeConfig().groups
-                    .filter(group => group?.requirement?.type === 'owner_only')
                     .map(group => ({
                         id: String(group.id || ''),
                         scope: group.scope === 'global' ? 'global' : 'list',
