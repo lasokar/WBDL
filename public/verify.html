@@ -43,13 +43,28 @@
 
     <script src="/nav.js"></script>
     <script>
+        async function readResponse(response) {
+            const contentType = response.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                return response.json().catch(() => ({}));
+            }
+            const text = await response.text();
+            return { message: text, error: text };
+        }
+
         async function verifyAccount() {
             const params = new URLSearchParams(window.location.search);
             const token = params.get('token');
+            const requestedType = params.get('type');
             const icon = document.getElementById('icon');
             const title = document.getElementById('title');
             const message = document.getElementById('message');
             const btn = document.getElementById('login-btn');
+
+            if (requestedType === 'email-change') {
+                title.innerText = "Verifying Email...";
+                message.innerText = "Please wait while we confirm your new email address.";
+            }
 
             if (!token) {
                 icon.className = "status-dot error";
@@ -60,17 +75,28 @@
             }
 
             try {
-                const response = await fetch(`/api/verify?token=${token}`);
+                const response = await fetch(`/api/verify?token=${encodeURIComponent(token)}`);
+                const data = await readResponse(response);
 
-                if (response.ok) {
-                    icon.className = "status-dot success";
-                    title.className = "success";
-                    title.innerText = "Account Verified!";
-                    message.innerText = "Your account is now active. You may now log in.";
-                    btn.style.display = "inline-block";
+                if (!response.ok) {
+                    throw new Error(data.error || data.message || "Verification failed.");
+                }
+
+                const verificationType = data.verificationType || requestedType || 'account';
+                icon.className = "status-dot success";
+                title.className = "success";
+                btn.style.display = "inline-block";
+
+                if (verificationType === 'email-change') {
+                    title.innerText = "Email Updated!";
+                    message.innerText = data.message || "Your new email address has been verified.";
+                    btn.href = "/account-settings";
+                    btn.innerText = "Back to Settings";
                 } else {
-                    const errorMsg = await response.text();
-                    throw new Error(errorMsg || "Error");
+                    title.innerText = "Account Verified!";
+                    message.innerText = data.message || "Your account is now active. You may now log in.";
+                    btn.href = "/login";
+                    btn.innerText = "Go to Login";
                 }
             } catch (err) {
                 icon.className = "status-dot error";

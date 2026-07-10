@@ -142,7 +142,7 @@
 
         .members-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
             margin-top: 18px;
         }
@@ -278,6 +278,7 @@
 
         @media (max-width: 700px) {
             .page-content { padding: 28px 12px 90px; }
+            .members-grid { grid-template-columns: 1fr; }
             .clan-table th:nth-child(3), .clan-table td:nth-child(3) { display: none; }
             .clan-table th, .clan-table td { padding: 13px 10px; }
             .clan-description-preview { max-width: 180px; }
@@ -1029,14 +1030,14 @@ window.WBDLIconRenderer = (() => {
             if (!viewer.role) {
                 if (!viewer.loggedIn) {
                     joinAction = '<a href="/login" class="secondary-btn">Log in to apply</a>';
-                } else if (viewer.myClanId) {
-                    joinAction = '<button class="secondary-btn" type="button" disabled>You are already in a clan</button>';
-                } else if (viewer.application) {
-                    joinAction = '<button class="secondary-btn" type="button" disabled>Application pending</button>';
-                } else if (Number(clan.memberCount) >= 8) {
-                    joinAction = '<button class="secondary-btn" type="button" disabled>Clan full</button>';
-                } else if (viewer.canApply) {
-                    joinAction = '<button class="primary-btn" type="button" onclick="applyToClan()">Apply to join</button>';
+                } else if (!viewer.myClanId) {
+                    if (viewer.application) {
+                        joinAction = '<button class="secondary-btn" type="button" disabled>Application pending</button>';
+                    } else if (Number(clan.memberCount) >= 8) {
+                        joinAction = '<button class="secondary-btn" type="button" disabled>Clan full</button>';
+                    } else if (viewer.canApply) {
+                        joinAction = '<button class="primary-btn" type="button" onclick="applyToClan()">Apply to join</button>';
+                    }
                 }
             }
 

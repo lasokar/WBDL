@@ -561,6 +561,22 @@ input:-webkit-autofill:focus {
                 <span>This likely won't be the final placement, but we do take this into consideration.</span>
                 <input type="number" id="v-opinion" placeholder="e.g. 100" min="1" max="150" oninput="if(parseInt(this.value) > 150) this.value = 150;">
             </div>
+            <div class="form-group" id="verification-enjoyment-group">
+                <label for="v-enjoyment-rating">Enjoyment rating (optional)</label>
+                <select id="v-enjoyment-rating">
+                    <option value="">Not rated</option>
+                    <option value="1">1 / 10</option>
+                    <option value="2">2 / 10</option>
+                    <option value="3">3 / 10</option>
+                    <option value="4">4 / 10</option>
+                    <option value="5">5 / 10</option>
+                    <option value="6">6 / 10</option>
+                    <option value="7">7 / 10</option>
+                    <option value="8">8 / 10</option>
+                    <option value="9">9 / 10</option>
+                    <option value="10">10 / 10</option>
+                </select>
+            </div>
         </div>
 
         <div class="form-group">
@@ -606,8 +622,12 @@ input:-webkit-autofill:focus {
 
     function setupListLabels() {
         const verifTab = document.getElementById('tab-verif');
+        const verificationEnjoymentGroup = document.getElementById('verification-enjoyment-group');
         if (isImpossibleList && verifTab) {
             verifTab.innerText = "New Level";
+        }
+        if (verificationEnjoymentGroup) {
+            verificationEnjoymentGroup.classList.toggle('hidden', isImpossibleList);
         }
     }
 
@@ -789,6 +809,9 @@ input:-webkit-autofill:focus {
         const author = document.getElementById('v-author').value;
         const levelId = document.getElementById('v-id').value;
         const opinion = parseInt(document.getElementById('v-opinion').value);
+        const enjoymentRating = isImpossibleList
+            ? ''
+            : document.getElementById('v-enjoyment-rating').value;
 
         if (!name || !author || !levelId || !opinion) {
             return alert("Please fill in all required fields.");
@@ -801,7 +824,7 @@ input:-webkit-autofill:focus {
         const res = await fetch('/api/submit-verification', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, author, levelId, opinion, videoUrl })
+            body: JSON.stringify({ name, author, levelId, opinion, videoUrl, enjoymentRating })
         });
 
         const data = await res.json();

@@ -66,16 +66,30 @@
       ]
     },
     {
-      "id": "top-one-completion",
+      "id": "top-level-completion",
       "requirement": {
-        "type": "completed_top_1"
+        "type": "top_level_completion"
       },
       "tiers": [
         {
           "id": 1,
+          "name": "Top 25 Victor",
+          "description": "This badge is earned by completing a top 25 level.",
+          "threshold": 1,
+          "iconPath": "/assets/trophies/top3.png"
+        },
+        {
+          "id": 2,
+          "name": "Top 10 Victor",
+          "description": "This badge is earned by completing a top 10 level.",
+          "threshold": 2,
+          "iconPath": "/assets/trophies/top2.png"
+        },
+        {
+          "id": 3,
           "name": "Top 1 Victor",
           "description": "This badge is earned by completing a top 1 level.",
-          "threshold": 1,
+          "threshold": 3,
           "iconPath": "/assets/trophies/top1.png"
         }
       ]
