@@ -605,7 +605,7 @@ async function getBadgeMetrics(userId, list, db = pool) {
 }
 
 const WBDL_RELEASE_AT = Date.parse('2026-04-07T00:00:00.000Z');
-const WBDL_OG_WINDOW_END = Date.parse('2026-04-14T00:00:00.000Z');
+const WBDL_OG_WINDOW_END = Date.parse('2026-04-15T00:00:00.000Z');
 
 function getBadgeMetricValue(metrics, requirement = {}) {
     if (requirement.type === 'joined_within_release_window') {
