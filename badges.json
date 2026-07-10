@@ -51,14 +51,14 @@
         },
         {
           "id": 2,
-          "name": "Verifier",
+          "name": "Serial Verifier",
           "description": "This badge is earned by verifying 5 levels that are placed on the list.",
           "threshold": 5,
           "iconPath": "/assets/badges/badge-6.png"
         },
         {
           "id": 3,
-          "name": "Serial Verifier",
+          "name": "Verification Master",
           "description": "This badge is earned by verifying 20 levels that are placed on the list.",
           "threshold": 20,
           "iconPath": "/assets/badges/badge-7.png"
