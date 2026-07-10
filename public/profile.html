@@ -644,7 +644,187 @@
                 justify-content: flex-start;
             }
         }
-    </style>
+    
+
+        .moderator-profile-button {
+            position: absolute;
+            left: 16px;
+            bottom: 16px;
+            width: 48px;
+            height: 50px;
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 6;
+        }
+
+        .moderator-profile-button:hover { transform: scale(1.05); }
+        .moderator-profile-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+        .moderator-profile-button img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+        .profile-badges-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 22px;
+            margin-bottom: 28px;
+        }
+
+        .profile-badges-title {
+            text-align: center;
+            margin-bottom: 14px;
+        }
+        .profile-badges-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+
+        .profile-badge-button {
+            width: 64px;
+            height: 64px;
+            min-width: 64px;
+            min-height: 64px;
+            background: transparent;
+            border: 0;
+            border-radius: 0;
+            padding: 4px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font: inherit;
+            transition: transform 0.15s, filter 0.15s;
+        }
+
+        .profile-badge-button:hover { transform: scale(1.08); }
+        .profile-badge-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .profile-badge-button img { width: 56px; height: 56px; object-fit: contain; display: block; }
+
+        .badge-detail-modal,
+        .badge-grant-modal {
+            text-align: center;
+        }
+
+        .badge-detail-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 16px 8px 8px;
+        }
+
+        .badge-detail-icon {
+            width: 112px;
+            height: 112px;
+            object-fit: contain;
+            display: block;
+        }
+
+        .badge-detail-modal h4 {
+            margin: 0;
+            text-align: center;
+        }
+
+        .badge-detail-description {
+            margin: 0;
+            max-width: 380px;
+            color: var(--text-muted);
+            line-height: 1.55;
+            text-align: center;
+        }
+
+        .profile-badge-add-button {
+            width: 56px;
+            height: 56px;
+            min-width: 56px;
+            min-height: 56px;
+            border: 1px dashed var(--border);
+            border-radius: var(--radius-sm);
+            background: transparent;
+            color: var(--text-muted);
+            font: 700 2rem/1 var(--font-body);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: border-color 0.15s, color 0.15s, transform 0.15s;
+        }
+
+        .profile-badge-add-button:hover {
+            border-color: var(--accent);
+            color: var(--text);
+            transform: scale(1.05);
+        }
+
+        .badge-grant-controls {
+            display: grid;
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .badge-grant-controls select,
+        .badge-grant-controls button {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 11px 12px;
+            font: inherit;
+        }
+
+        .badge-grant-controls select {
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        .badge-grant-controls button {
+            background: var(--accent);
+            color: #000;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .staff-modal {
+            width: min(100%, 760px);
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+        .staff-control-section { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; }
+        .staff-control-section h5 { margin: 0 0 10px; color: var(--text); font-size: 1rem; }
+        .staff-control-section input,
+        .staff-control-section select,
+        .staff-control-section textarea {
+            width: 100%;
+            box-sizing: border-box;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 11px;
+            font: inherit;
+            margin-bottom: 8px;
+        }
+        .staff-action-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .staff-action-row button {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--surface-2);
+            color: var(--text);
+            padding: 9px 12px;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .staff-action-row button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+        @media (max-width: 620px) {
+            .moderator-profile-button { left: 12px; bottom: 12px; width: 44px; height: 46px; }
+            .profile-badges-grid { justify-content: center; }
+        }
+</style>
 </head>
 <body>
 
@@ -653,6 +833,10 @@
     <main class="page-content">
         <div id="profile-display" style="display: none;">
             <div class="profile-header" id="header-box">
+                <button type="button" id="moderator-profile-button" class="moderator-profile-button" onclick="openModerationPanel()" aria-label="Moderate user" title="Moderate user">
+                    <img src="/assets/moderatorButton.png" alt="">
+                </button>
+
                 <div id="leaderboard-tag" class="leaderboard-pos" style="display: none;">
                     <img id="trophy-icon" src="" alt="Trophy">
                     <span id="leaderboard-rank">#0</span>
@@ -721,6 +905,11 @@
                 </div>
             </div>
 
+            <div class="profile-badges-section" id="profile-badges-section" style="display:none;">
+                <span class="stat-label profile-badges-title">Badges</span>
+                <div id="profile-badges-grid" class="profile-badges-grid"></div>
+            </div>
+
             <div class="section-card" id="completed-section">
                 <div class="section-head">
                     <h3 style="margin: 0;">Levels Beaten</h3>
@@ -768,10 +957,44 @@
                 <span class="modal-key">Points earned</span>
                 <span class="modal-value" id="completion-modal-points">N/A</span>
             </div>
+            <div class="modal-row" id="completion-modal-enjoyment-row" style="display:none;">
+                <span class="modal-key">Enjoyment</span>
+                <span class="modal-value" id="completion-modal-enjoyment">N/A</span>
+            </div>
             <div class="modal-actions">
                 <a class="modal-btn" id="completion-modal-demon" href="#" target="_blank" rel="noopener">Level Page</a>
                 <a class="modal-btn" id="completion-modal-video" href="#" target="_blank" rel="noopener">Watch</a>
             </div>
+        </div>
+    </div>
+
+    <div class="completion-modal-overlay" id="badge-modal-overlay" aria-hidden="true">
+        <div class="completion-modal badge-detail-modal" role="dialog" aria-modal="true" aria-labelledby="badge-modal-name">
+            <button class="completion-modal-close-x" type="button" onclick="closeBadgeModal()" aria-label="Close">&times;</button>
+            <div class="badge-detail-content">
+                <img id="badge-modal-icon" class="badge-detail-icon" src="/assets/icon.png" alt="">
+                <h4 id="badge-modal-name">Badge</h4>
+                <p id="badge-modal-description" class="badge-detail-description"></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="completion-modal-overlay" id="badge-grant-modal-overlay" aria-hidden="true">
+        <div class="completion-modal badge-grant-modal" role="dialog" aria-modal="true" aria-labelledby="badge-grant-title">
+            <button class="completion-modal-close-x" type="button" onclick="closeBadgeGrantModal()" aria-label="Close">&times;</button>
+            <h4 id="badge-grant-title">Add Badge</h4>
+            <div class="badge-grant-controls">
+                <select id="badge-grant-select" aria-label="Badge to add"></select>
+                <button type="button" onclick="grantSelectedBadge()">Add badge</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="completion-modal-overlay" id="moderation-modal-overlay" aria-hidden="true">
+        <div class="completion-modal staff-modal" role="dialog" aria-modal="true" aria-labelledby="moderation-modal-title">
+            <button class="completion-modal-close-x" type="button" onclick="closeModerationPanel()" aria-label="Close">&times;</button>
+            <h4 id="moderation-modal-title">Moderate User</h4>
+            <div id="moderation-modal-content"><p style="color:var(--text-muted);">Loading...</p></div>
         </div>
     </div>
 
@@ -1260,6 +1483,9 @@
         let completedRecordsCache = [];
         let completedSortMode = 'recent';
         let hardestRecordCache = null;
+        let currentProfileData = null;
+        let moderationPanelData = null;
+        let pendingModerationAction = null;
 
         function escapeHtml(str) {
             return String(str ?? '')
@@ -1530,13 +1756,23 @@
             return `#${num}, ${tier}`;
         }
 
-        function openCompletionModal({ name, placement, status, videoUrl, points, demonUrl }) {
+        function openCompletionModal({ name, placement, status, videoUrl, points, demonUrl, enjoymentRating }) {
             const overlay = document.getElementById('completion-modal-overlay');
             document.getElementById('completion-modal-title').innerText = name || 'Level';
             document.getElementById('completion-modal-status').innerText = status || 'Unknown';
             document.getElementById('completion-modal-placement').innerText = placement || 'N/A';
             document.getElementById('completion-modal-points').innerText =
                 (points !== undefined && points !== null && points !== '') ? points : 'N/A';
+
+            const enjoymentRow = document.getElementById('completion-modal-enjoyment-row');
+            const enjoymentValue = document.getElementById('completion-modal-enjoyment');
+            if (enjoymentRating !== undefined && enjoymentRating !== null && enjoymentRating !== '') {
+                enjoymentValue.innerText = `${enjoymentRating}/10`;
+                enjoymentRow.style.display = 'flex';
+            } else {
+                enjoymentValue.innerText = 'N/A';
+                enjoymentRow.style.display = 'none';
+            }
 
             const demonBtn = document.getElementById('completion-modal-demon');
             if (demonUrl) {
@@ -1567,7 +1803,11 @@
         }
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeCompletionModal();
+            if (e.key === 'Escape') {
+                closeCompletionModal();
+                closeBadgeModal();
+                closeModerationPanel();
+            }
         });
 
         document.addEventListener('click', (e) => {
@@ -1605,6 +1845,7 @@
                 status: getCompletionStatusLabel(record.completion_status),
                 videoUrl: record.video_url,
                 points: record.points,
+                enjoymentRating: record.enjoyment_rating,
                 demonUrl: record.demon_id ? `/demon/${record.demon_id}` : ''
             });
         }
@@ -1670,6 +1911,314 @@
             });
         }
 
+        function renderProfileBadges(groups) {
+            const section = document.getElementById('profile-badges-section');
+            const grid = document.getElementById('profile-badges-grid');
+            const unlocked = Array.isArray(groups) ? groups.filter(group => group.unlocked) : [];
+            const isOwner = Array.isArray(currentProfileData?.badgeCatalog);
+
+            if (!unlocked.length && !isOwner) {
+                section.style.display = 'none';
+                grid.innerHTML = '';
+                return;
+            }
+
+            const badgeButtons = unlocked.map(group => {
+                const tier = group.currentTier || {};
+                const tooltip = [tier.name, tier.description].filter(Boolean).join(' — ');
+                return `
+                    <button type="button" class="profile-badge-button" onclick="openBadgeModal('${escapeHtml(group.id)}')" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tier.name || 'Badge')}">
+                        <img src="${escapeHtml(tier.iconPath || group.iconPath || '/assets/icon.png')}" alt="">
+                    </button>
+                `;
+            }).join('');
+
+            const addButton = isOwner
+                ? '<button type="button" class="profile-badge-add-button" onclick="openBadgeGrantModal()" title="Add badge" aria-label="Add badge">+</button>'
+                : '';
+
+            grid.innerHTML = badgeButtons + addButton;
+            section.style.display = 'block';
+        }
+
+        function openBadgeModal(groupId) {
+            const group = (currentProfileData?.badges || []).find(item => item.id === groupId);
+            const tier = group?.currentTier;
+            if (!tier) return;
+
+            document.getElementById('badge-modal-icon').src = tier.iconPath || group.iconPath || '/assets/icon.png';
+            document.getElementById('badge-modal-name').innerText = tier.name || 'Badge';
+            document.getElementById('badge-modal-description').innerText = tier.description || '';
+
+            const overlay = document.getElementById('badge-modal-overlay');
+            overlay.classList.add('visible');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeBadgeModal() {
+            const overlay = document.getElementById('badge-modal-overlay');
+            overlay.classList.remove('visible');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        function openBadgeGrantModal() {
+            const catalog = Array.isArray(currentProfileData?.badgeCatalog) ? currentProfileData.badgeCatalog : [];
+            const select = document.getElementById('badge-grant-select');
+            const options = [];
+
+            for (const group of catalog) {
+                for (const tier of Array.isArray(group.tiers) ? group.tiers : []) {
+                    const label = [tier.name || `Badge ${tier.id}`, tier.description].filter(Boolean).join(' — ');
+                    options.push(`<option value="${escapeHtml(group.id)}:${Number(tier.id)}">${escapeHtml(label)}</option>`);
+                }
+            }
+
+            select.innerHTML = options.join('');
+            if (!options.length) {
+                alert('No badges are configured.');
+                return;
+            }
+
+            const overlay = document.getElementById('badge-grant-modal-overlay');
+            overlay.classList.add('visible');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeBadgeGrantModal() {
+            const overlay = document.getElementById('badge-grant-modal-overlay');
+            overlay.classList.remove('visible');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        async function grantSelectedBadge() {
+            const value = document.getElementById('badge-grant-select').value;
+            const splitAt = value.lastIndexOf(':');
+            const groupId = value.slice(0, splitAt);
+            const tierId = Number(value.slice(splitAt + 1));
+            if (!groupId || !Number.isInteger(tierId)) return;
+
+            try {
+                const res = await fetch(`/api/owner/users/${currentProfileData.userId}/badges`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ groupId, tierId })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Could not add badge.');
+                alert(data.message || 'Badge added.');
+                closeBadgeGrantModal();
+                await loadProfile();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        function setupModerationButton(data) {
+            const button = document.getElementById('moderator-profile-button');
+            const viewerRole = String(data.moderation?.viewerRole || '').toLowerCase();
+            const targetRole = String(data.role || '').toLowerCase();
+            const targetIsStaff = ['moderator', 'admin', 'owner'].includes(targetRole);
+            const canModerate = Boolean(data.moderation?.canModerate)
+                && (viewerRole === 'owner' || !targetIsStaff);
+            button.style.display = canModerate ? 'inline-flex' : 'none';
+        }
+
+        function closeModerationPanel() {
+            pendingModerationAction = null;
+            const overlay = document.getElementById('moderation-modal-overlay');
+            overlay.classList.remove('visible');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        async function openModerationPanel() {
+            if (!currentProfileData?.userId) return;
+            pendingModerationAction = null;
+            const overlay = document.getElementById('moderation-modal-overlay');
+            const content = document.getElementById('moderation-modal-content');
+            overlay.classList.add('visible');
+            overlay.setAttribute('aria-hidden', 'false');
+            content.innerHTML = '<p style="color:var(--text-muted);">Loading...</p>';
+
+            try {
+                const res = await fetch(`/api/moderation/users/${currentProfileData.userId}`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Could not load moderation controls.');
+                moderationPanelData = data;
+                renderModerationPanel(data);
+            } catch (err) {
+                content.innerHTML = `<p style="color:var(--danger);">${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        function renderModerationPanel(data) {
+            const content = document.getElementById('moderation-modal-content');
+            const target = data.target || {};
+            const viewerRole = String(data.viewerRole || '').toLowerCase();
+            const targetRole = String(target.role || 'user').toLowerCase();
+            const isAdminViewer = ['admin', 'owner'].includes(viewerRole);
+            const isOwnerViewer = viewerRole === 'owner';
+            const protectedTarget = Boolean(target.protectedFromBans);
+            const normalizedTargetRole = targetRole === 'user' ? 'member' : targetRole;
+            const targetIsStaff = ['moderator', 'admin', 'owner'].includes(normalizedTargetRole);
+
+            if (targetIsStaff && !isOwnerViewer) {
+                content.innerHTML = '<p style="color:var(--danger);">Only the owner can moderate staff members.</p>';
+                return;
+            }
+
+            content.innerHTML = `
+                <div id="staff-action-options">
+                    <div class="staff-control-section">
+                        ${protectedTarget
+                            ? '<p style="color:var(--text-muted);">You cannot ban this person.</p>'
+                            : `<div class="staff-action-row"><button type="button" class="${target.leaderboard_banned ? '' : 'danger'}" onclick="beginModerationAction('leaderboard-ban', ${target.leaderboard_banned ? 'false' : 'true'}, '${target.leaderboard_banned ? 'Remove leaderboard ban' : 'Leaderboard ban'}')">${target.leaderboard_banned ? 'Remove leaderboard ban' : 'Leaderboard ban'}</button></div>`}
+                        ${isAdminViewer ? `
+                            ${protectedTarget
+                                ? ''
+                                : `<br><div class="staff-action-row"><button type="button" class="${target.account_disabled ? '' : 'danger'}" onclick="beginModerationAction('account-disabled', ${target.account_disabled ? 'false' : 'true'}, '${target.account_disabled ? 'Re-enable account' : 'Disable account'}')">${target.account_disabled ? 'Re-enable account' : 'Disable account'}</button></div>`}
+                        ` : ''}
+                    </div>
+                    ${isAdminViewer ? `
+                        ${isOwnerViewer && normalizedTargetRole !== 'owner' ? `
+                            <div class="staff-control-section">
+                                <h5>Change role</h5>
+                                <select id="staff-role-select" aria-label="User role">
+                                    <option value="member" ${normalizedTargetRole === 'member' ? 'selected' : ''}>Member</option>
+                                    <option value="moderator" ${normalizedTargetRole === 'moderator' ? 'selected' : ''}>Moderator</option>
+                                    <option value="admin" ${normalizedTargetRole === 'admin' ? 'selected' : ''}>Admin</option>
+                                </select>
+                                <div class="staff-action-row">
+                                    <button type="button" onclick="beginModerationAction('role', document.getElementById('staff-role-select').value, 'Change role')">Change role</button>
+                                </div>
+                            </div>
+                        ` : ''}
+                        <div class="staff-control-section">
+                            <h5>Moderate username</h5>
+                            <input id="staff-username" type="text" value="${escapeHtml(target.username || '')}" maxlength="20">
+                            <div class="staff-action-row"><button type="button" onclick="beginModerationAction('username', null, 'Change username')">Change username</button></div>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="staff-control-section" id="staff-reason-section" hidden>
+                    <h5>Reason for account action</h5>
+                    <textarea id="staff-global-reason" rows="3" placeholder="Reason for action (optional)"></textarea>
+                    <div class="staff-action-row">
+                        <button id="staff-confirm-action" type="button" onclick="confirmModerationAction()">Confirm action</button>
+                        <button type="button" onclick="cancelModerationAction()">Cancel</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function beginModerationAction(type, value, label) {
+            pendingModerationAction = { type, value };
+            const section = document.getElementById('staff-reason-section');
+            const reason = document.getElementById('staff-global-reason');
+            const confirmButton = document.getElementById('staff-confirm-action');
+            if (!section || !reason || !confirmButton) return;
+
+            const options = document.getElementById('staff-action-options');
+            if (options) options.hidden = true;
+            section.hidden = false;
+            reason.value = '';
+            confirmButton.textContent = `Confirm ${label}`;
+            reason.focus({ preventScroll: true });
+        }
+
+        function cancelModerationAction() {
+            pendingModerationAction = null;
+            const section = document.getElementById('staff-reason-section');
+            const options = document.getElementById('staff-action-options');
+            const reason = document.getElementById('staff-global-reason');
+            if (reason) reason.value = '';
+            if (section) section.hidden = true;
+            if (options) options.hidden = false;
+        }
+
+        function moderationReason() {
+            return document.getElementById('staff-global-reason')?.value.trim() || '';
+        }
+
+        async function runModerationRequest(url, options) {
+            const res = await fetch(url, options);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Moderation action failed.');
+            alert(data.message || 'Action completed.');
+            return data;
+        }
+
+        async function confirmModerationAction() {
+            if (!pendingModerationAction) return;
+            const action = pendingModerationAction;
+            const confirmButton = document.getElementById('staff-confirm-action');
+            if (confirmButton) confirmButton.disabled = true;
+
+            try {
+                if (action.type === 'leaderboard-ban') {
+                    await setLeaderboardBan(Boolean(action.value));
+                } else if (action.type === 'account-disabled') {
+                    await setAccountDisabled(Boolean(action.value));
+                } else if (action.type === 'username') {
+                    await saveModeratedUsername();
+                } else if (action.type === 'role') {
+                    await changeUserRole(String(action.value || ''));
+                }
+            } catch (err) {
+                alert(err.message);
+                if (confirmButton?.isConnected) confirmButton.disabled = false;
+            }
+        }
+
+        async function setLeaderboardBan(banned) {
+            await runModerationRequest(`/api/moderation/users/${currentProfileData.userId}/leaderboard-ban`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ banned, reason: moderationReason() })
+            });
+            await openModerationPanel();
+            await loadProfile();
+        }
+
+        async function setAccountDisabled(disabled) {
+            await runModerationRequest(`/api/admin/users/${currentProfileData.userId}/disable`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ disabled, reason: moderationReason() })
+            });
+            await openModerationPanel();
+            await loadProfile();
+        }
+
+        async function saveModeratedUsername() {
+            const username = document.getElementById('staff-username').value.trim();
+            await runModerationRequest(`/api/admin/users/${currentProfileData.userId}/username`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, reason: moderationReason() })
+            });
+            window.location.href = `/profile?user=${encodeURIComponent(username)}`;
+        }
+
+        async function changeUserRole(role) {
+            await runModerationRequest(`/api/owner/users/${currentProfileData.userId}/role`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role, reason: moderationReason() })
+            });
+            await openModerationPanel();
+            await loadProfile();
+        }
+
+
+        document.addEventListener('click', event => {
+            const badgeOverlay = document.getElementById('badge-modal-overlay');
+            const badgeGrantOverlay = document.getElementById('badge-grant-modal-overlay');
+            const moderationOverlay = document.getElementById('moderation-modal-overlay');
+            if (event.target === badgeOverlay) closeBadgeModal();
+            if (event.target === badgeGrantOverlay) closeBadgeGrantModal();
+            if (event.target === moderationOverlay) closeModerationPanel();
+        });
+
         async function loadProfile() {
             const params = new URLSearchParams(window.location.search);
             const username = params.get('user');
@@ -1687,6 +2236,9 @@
                 }
 
                 const data = await res.json();
+                currentProfileData = data;
+                renderProfileBadges(data.badges || []);
+                setupModerationButton(data);
                 document.getElementById('profile-display').style.display = 'block';
 
                 if (isImpossibleList) {

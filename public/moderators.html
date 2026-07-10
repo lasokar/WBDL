@@ -113,6 +113,7 @@
                ${rec.username}
             </a><br>
                         <span>${rec.demon_name} (${rec.percentage}%)</span><br>
+                        ${rec.enjoyment_rating ? `<span style="color:var(--text-muted);font-size:0.86em;">Enjoyment: ${rec.enjoyment_rating}/10</span><br>` : ''}
                         <a href="${rec.video_url}" target="_blank" class="video-link">View Video</a>
                     </div>
                     <div>

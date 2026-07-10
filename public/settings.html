@@ -1285,6 +1285,16 @@
                 </div>
 
                 <div class="section">
+                    <h2>Change email</h2>
+                    <label>Email address</label>
+                    <input type="email" id="account-email" placeholder="you@example.com" autocomplete="email">
+                    <label>Current password</label>
+                    <input type="password" id="email-current-password" placeholder="Current Password" autocomplete="current-password">
+                    <button onclick="updateEmail()">Change email</button>
+                    <div id="email-msg" class="msg"></div>
+                </div>
+
+                <div class="section">
                     <h2>Change password</h2>
                     <label>Current password</label>
                     <input type="password" id="pass-current-password" placeholder="Current Password">
@@ -2615,6 +2625,7 @@
             }
 
             document.getElementById('new-username').value = data.username || '';
+            document.getElementById('account-email').value = data.email || '';
             document.getElementById('profile-display-name').value = data.displayName || '';
             document.getElementById('profile-bio').value = data.bio || '';
             setPronouns(data.pronouns || '');
@@ -2740,6 +2751,19 @@
             });
             const data = await res.json();
             handleResponse(res, data, 'user-msg');
+        }
+
+        async function updateEmail() {
+            const email = document.getElementById('account-email').value.trim();
+            const currentPassword = document.getElementById('email-current-password').value;
+            const res = await fetch('/api/settings/email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, currentPassword })
+            });
+            const data = await res.json();
+            handleResponse(res, data, 'email-msg');
+            if (res.ok) document.getElementById('email-current-password').value = '';
         }
 
         async function updatePassword() {

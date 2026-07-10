@@ -1,0 +1,177 @@
+{
+  "groups": [
+    {
+      "id": "levels-completed",
+      "requirement": {
+        "type": "completed_levels"
+      },
+      "tiers": [
+        {
+          "id": 1,
+          "name": "Web Dasher",
+          "description": "This badge is earned by beating 5 list levels.",
+          "threshold": 5,
+          "iconPath": "/assets/badges/badge-1.png"
+        },
+        {
+          "id": 2,
+          "name": "Web Grinder",
+          "description": "This badge is earned by beating 20 list levels.",
+          "threshold": 20,
+          "iconPath": "/assets/badges/badge-2.png"
+        },
+        {
+          "id": 3,
+          "name": "Web Menace",
+          "description": "This badge is earned by beating 75 list levels.",
+          "threshold": 75,
+          "iconPath": "/assets/badges/badge-3.png"
+        },
+        {
+          "id": 4,
+          "name": "Web Destroyer",
+          "description": "This badge is earned by beating all 150 list levels. You are insane :)",
+          "threshold": 150,
+          "iconPath": "/assets/badges/badge-4.png"
+        }
+      ]
+    },
+    {
+      "id": "verified-levels",
+      "requirement": {
+        "type": "verified_levels"
+      },
+      "tiers": [
+        {
+          "id": 1,
+          "name": "Verifier",
+          "description": "This badge is earned by verifying a level that's placed on the list.",
+          "threshold": 1,
+          "iconPath": "/assets/badges/badge-5.png"
+        },
+        {
+          "id": 2,
+          "name": "Verifier",
+          "description": "This badge is earned by verifying 5 levels that are placed on the list.",
+          "threshold": 5,
+          "iconPath": "/assets/badges/badge-6.png"
+        },
+        {
+          "id": 3,
+          "name": "Serial Verifier",
+          "description": "This badge is earned by verifying 20 levels that are placed on the list.",
+          "threshold": 20,
+          "iconPath": "/assets/badges/badge-7.png"
+        }
+      ]
+    },
+    {
+      "id": "top-one-completion",
+      "requirement": {
+        "type": "completed_top_1"
+      },
+      "tiers": [
+        {
+          "id": 1,
+          "name": "Top 1 Victor",
+          "description": "This badge is earned by completing a top 1 level.",
+          "threshold": 1,
+          "iconPath": "/assets/trophies/top1.png"
+        }
+      ]
+    },
+    {
+      "id": "leaderboard-first",
+      "requirement": {
+        "type": "top_1_duration_seconds"
+      },
+      "tiers": [
+        {
+          "id": 1,
+          "name": "Champion",
+          "description": "This badge is earned by reaching the #1 spot on the leaderboard.",
+          "threshold": 1,
+          "iconPath": "/assets/badges/badge-8.png"
+        },
+        {
+          "id": 2,
+          "name": "Master Champion",
+          "description": "This badge is earned by holding the #1 spot on the leaderboard for a total of 7 days.",
+          "threshold": 604800,
+          "iconPath": "/assets/badges/badge-9.png"
+        },
+        {
+          "id": 3,
+          "name": "Godly Champion",
+          "description": "This badge is earned by holding the #1 spot on the leaderboard for a total of 30 days.",
+          "threshold": 2592000,
+          "iconPath": "/assets/badges/badge-10.png"
+        }
+      ]
+    },
+    {
+      "id": "contributor",
+      "scope": "global",
+      "requirement": {
+        "type": "owner_only"
+      },
+      "tiers": [
+        {
+          "id": 1,
+          "name": "Contributor",
+          "description": "This special badge is granted to those who contribute to the WBDL website in one way or another. Thank you!",
+          "threshold": 1,
+          "iconPath": "/assets/badges/badge-11.png"
+        }
+      ]
+    },
+    {
+      "id": "og",
+      "scope": "global",
+      "requirement": {
+        "type": "joined_within_release_window"
+      },
+      "tiers": [
+        {
+          "id": 1,
+          "name": "Certified Oldgen",
+          "description": "This badge was awarded to everyone who joined WBDL within a week of the release.",
+          "threshold": 1,
+          "iconPath": "/assets/badges/badge-12.png"
+        }
+      ]
+    },
+    {
+      "id": "community-member",
+      "scope": "global",
+      "requirement": {
+        "type": "discord_guild_member"
+      },
+      "tiers": [
+        {
+          "id": 1,
+          "name": "Community Member",
+          "description": "This badge is earned by joining the WBDL discord server.",
+          "threshold": 1,
+          "iconPath": "/assets/badges/badge-13.png"
+        }
+      ]
+    },
+    {
+      "id": "eternal-door",
+      "scope": "global",
+      "requirement": {
+        "type": "owner_only"
+      },
+      "tiers": [
+        {
+          "id": 1,
+          "name": "Eternal Badge",
+          "description": "This badge was awarded to the winner of the Eternal Door contest held in June 2026.",
+          "threshold": 1,
+          "iconPath": "/assets/badges/badge-14.png"
+        }
+      ]
+    }
+  ]
+}

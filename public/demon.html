@@ -137,6 +137,10 @@
 
         .verifier-row {
             margin: -8px 0 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
             text-align: center;
             color: var(--text);
             font-weight: 400;
@@ -273,6 +277,180 @@
         .row-up { background-color: rgba(0, 230, 118, 0.08); color: #7ff0b3; }
         .row-down { background-color: rgba(255, 82, 82, 0.08); color: #ff9999; }
         .row-added { background-color: rgba(255, 255, 255, 0.03); }
+
+
+        .record-row-right {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .record-moderation-button {
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: transform 0.15s ease, opacity 0.15s ease;
+            flex-shrink: 0;
+        }
+
+        .record-moderation-button:hover {
+            transform: scale(1.08);
+        }
+
+        .record-moderation-button:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .record-moderation-button img {
+            width: 32px;
+            height: 32px;
+            display: block;
+            object-fit: contain;
+        }
+
+        .record-moderation-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.72);
+        }
+
+        .record-moderation-overlay.visible {
+            display: flex;
+        }
+
+        .record-moderation-modal {
+            position: relative;
+            width: min(100%, 500px);
+            max-height: 88vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+            padding: 24px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface);
+            box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+        }
+
+        .record-moderation-modal h3 {
+            margin: 0 42px 4px 0;
+            color: var(--text);
+        }
+
+        .record-moderation-summary {
+            margin: 0 0 18px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .record-moderation-close {
+            position: absolute;
+            top: 12px;
+            right: 14px;
+            width: 34px;
+            height: 34px;
+            border: 0;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font: inherit;
+            font-size: 1.8rem;
+            line-height: 1;
+        }
+
+        .record-moderation-field {
+            display: block;
+            margin-bottom: 12px;
+        }
+
+        .record-moderation-field > span {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-muted);
+            font-size: 0.76rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .record-moderation-field input,
+        .record-moderation-field select,
+        .record-moderation-field textarea {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 11px;
+            background: var(--bg);
+            color: var(--text);
+            font: inherit;
+        }
+
+        .record-moderation-field textarea {
+            min-height: 86px;
+            resize: vertical;
+        }
+
+        .record-moderation-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 9px;
+            flex-wrap: wrap;
+            margin-top: 18px;
+        }
+
+        .record-moderation-actions button {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 9px 14px;
+            background: var(--surface-2);
+            color: var(--text);
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+        }
+
+        .record-moderation-actions .save-record-button {
+            border-color: var(--accent);
+            background: var(--accent);
+            color: #000;
+        }
+
+        .record-moderation-actions .delete-record-button {
+            border-color: #e53935;
+            background: #e53935;
+            color: #fff;
+        }
+
+        @media (max-width: 540px) {
+            .record-row {
+                gap: 10px;
+            }
+
+            .record-row-right {
+                gap: 7px;
+            }
+
+            .record-moderation-modal {
+                padding: 20px;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -285,6 +463,7 @@
             <div class="level-meta-corner" id="level-meta-corner" style="display:none;">
                 <div id="level-update-text"></div>
                 <div id="level-upload-date-text"></div>
+                <div id="level-average-enjoyment-text"></div>
             </div>
             <h1 id="demon-name">Level Name</h1>
             <div style="margin-top: 10px; display: flex; align-items: center; gap: 15px;">
@@ -331,6 +510,61 @@
         </div>
     </main>
 
+
+    <div class="record-moderation-overlay" id="record-moderation-overlay" aria-hidden="true">
+        <div class="record-moderation-modal" role="dialog" aria-modal="true" aria-labelledby="record-moderation-title">
+            <button type="button" class="record-moderation-close" onclick="closeRecordModeration()" aria-label="Close">&times;</button>
+            <h3 id="record-moderation-title">Moderate Record</h3>
+            <p class="record-moderation-summary" id="record-moderation-summary"></p>
+
+            <label class="record-moderation-field">
+                <span>Percentage</span>
+                <input id="record-moderation-percentage" type="number" min="1" max="100" inputmode="numeric" oninput="clampRecordPercentage(this); syncRecordEnjoymentField();">
+            </label>
+
+            <label class="record-moderation-field">
+                <span>Video URL</span>
+                <input id="record-moderation-video" type="url">
+            </label>
+
+            <label class="record-moderation-field" id="record-moderation-enjoyment-field">
+                <span>Enjoyment</span>
+                <select id="record-moderation-enjoyment">
+                    <option value="">Not rated</option>
+                    <option value="1">1/10</option>
+                    <option value="2">2/10</option>
+                    <option value="3">3/10</option>
+                    <option value="4">4/10</option>
+                    <option value="5">5/10</option>
+                    <option value="6">6/10</option>
+                    <option value="7">7/10</option>
+                    <option value="8">8/10</option>
+                    <option value="9">9/10</option>
+                    <option value="10">10/10</option>
+                </select>
+            </label>
+
+            <label class="record-moderation-field">
+                <span>Status</span>
+                <select id="record-moderation-status">
+                    <option value="pending">Pending</option>
+                    <option value="accepted">Accepted</option>
+                    <option value="rejected">Rejected</option>
+                </select>
+            </label>
+
+            <label class="record-moderation-field">
+                <span>Reason</span>
+                <textarea id="record-moderation-reason" placeholder="Reason for change (optional)"></textarea>
+            </label>
+
+            <div class="record-moderation-actions">
+                <button type="button" class="delete-record-button" onclick="deleteModeratedRecord()">Delete</button>
+                <button type="button" class="save-record-button" onclick="saveModeratedRecord()">Save</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         (function () {
             const params = new URLSearchParams(window.location.search);
@@ -348,6 +582,11 @@
 
         const embedParams = new URLSearchParams(window.location.search);
         const isEmbedMode = embedParams.get('embed') === '1' || embedParams.get('nonav') === '1';
+        let canManageRecords = false;
+        let recordModerationViewerRole = '';
+        let recordModerationPermissionsLoaded = false;
+        let recordModerationCache = new Map();
+        let activeModeratedRecord = null;
 
         if (isEmbedMode) {
             document.documentElement.classList.add('embed-mode');
@@ -969,20 +1208,37 @@
             });
         }
 
+        function getAverageEnjoyment(records) {
+            const ratings = (Array.isArray(records) ? records : [])
+                .filter(record => Number(record.percentage) === 100)
+                .map(record => Number(record.enjoyment_rating))
+                .filter(rating => Number.isFinite(rating) && rating >= 1 && rating <= 10);
+
+            if (!ratings.length) return '';
+
+            const average = ratings.reduce((total, rating) => total + rating, 0) / ratings.length;
+            return Number.isInteger(average) ? String(average) : average.toFixed(1);
+        }
+
         function renderLevelMeta(data) {
             const meta = document.getElementById('level-meta-corner');
             const updateText = document.getElementById('level-update-text');
             const uploadDateText = document.getElementById('level-upload-date-text');
+            const averageEnjoymentText = document.getElementById('level-average-enjoyment-text');
 
-            if (!meta || !updateText || !uploadDateText) return;
+            if (!meta || !updateText || !uploadDateText || !averageEnjoymentText) return;
 
             const updateVersion = data.level_update || '';
             const uploadDate = formatEstimatedUploadDate(data.upload_date_estimate);
+            const averageEnjoyment = getAverageEnjoyment(data.records);
 
             updateText.innerHTML = updateVersion ? `Level made in ${escapeHtml(updateVersion)}` : '';
             uploadDateText.innerHTML = uploadDate ? `Uploaded: ${escapeHtml(uploadDate)}` : '';
+            averageEnjoymentText.innerHTML = averageEnjoyment
+                ? `Average enjoyment: ${escapeHtml(averageEnjoyment)}/10`
+                : 'Average enjoyment: Not rated';
 
-            meta.style.display = updateVersion || uploadDate ? 'block' : 'none';
+            meta.style.display = updateVersion || uploadDate || averageEnjoymentText.textContent ? 'block' : 'none';
         }
 
         function getProfileUrl(username) {
@@ -1007,6 +1263,139 @@
                 getUserIcon(user),
                 { quality: 'uhd' }
             );
+        }
+
+
+        async function loadRecordModerationPermissions() {
+            if (recordModerationPermissionsLoaded) return;
+            recordModerationPermissionsLoaded = true;
+
+            try {
+                const res = await fetch('/api/me');
+                const data = await res.json();
+                recordModerationViewerRole = String(data.role || '').toLowerCase();
+                canManageRecords = Boolean(data.loggedIn && ['admin', 'owner'].includes(recordModerationViewerRole));
+            } catch (_) {
+                canManageRecords = false;
+                recordModerationViewerRole = '';
+            }
+        }
+
+        function canModerateRecord(record) {
+            if (!canManageRecords) return false;
+            const targetRole = String(record?.role || '').toLowerCase();
+            const targetIsStaff = ['moderator', 'admin', 'owner'].includes(targetRole);
+            return recordModerationViewerRole === 'owner' || !targetIsStaff;
+        }
+
+        function getRecordModerationButton(record) {
+            const recordId = Number(record?.id);
+            if (!canModerateRecord(record) || !Number.isInteger(recordId)) return '';
+
+            return `
+                <button type="button" class="record-moderation-button" onclick="openRecordModeration(${recordId})" title="Edit or delete record" aria-label="Edit or delete ${escapeHtml(getDisplayName(record) || record.username || 'user')} record">
+                    <img src="/assets/moderatorButton.png" alt="">
+                </button>
+            `;
+        }
+
+        function openRecordModeration(recordId) {
+            const record = recordModerationCache.get(Number(recordId));
+            if (!record || !canModerateRecord(record)) return;
+
+            activeModeratedRecord = record;
+            const displayName = getDisplayName(record) || record.username || 'User';
+            document.getElementById('record-moderation-title').innerText = `Moderate ${displayName}'s Record`;
+            document.getElementById('record-moderation-summary').innerText = `Record ID ${record.id}`;
+            document.getElementById('record-moderation-percentage').value = record.percentage ?? '';
+            document.getElementById('record-moderation-video').value = record.video_url || '';
+            document.getElementById('record-moderation-enjoyment').value = record.enjoyment_rating ?? '';
+            document.getElementById('record-moderation-status').value = record.status || 'accepted';
+            document.getElementById('record-moderation-reason').value = '';
+            syncRecordEnjoymentField();
+
+            const overlay = document.getElementById('record-moderation-overlay');
+            overlay.classList.add('visible');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeRecordModeration() {
+            activeModeratedRecord = null;
+            const overlay = document.getElementById('record-moderation-overlay');
+            overlay.classList.remove('visible');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        function clampRecordPercentage(input) {
+            if (input.value === '') return;
+            const value = Number(input.value);
+            if (Number.isFinite(value) && value > 100) input.value = '100';
+        }
+
+        function syncRecordEnjoymentField() {
+            const percentage = Number(document.getElementById('record-moderation-percentage').value);
+            const field = document.getElementById('record-moderation-enjoyment-field');
+            const select = document.getElementById('record-moderation-enjoyment');
+            const isCompletion = percentage === 100;
+            field.style.display = isCompletion ? 'block' : 'none';
+            if (!isCompletion) select.value = '';
+        }
+
+        async function runRecordModerationRequest(url, options) {
+            const res = await fetch(url, options);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Record moderation failed.');
+            return data;
+        }
+
+        async function saveModeratedRecord() {
+            const record = activeModeratedRecord;
+            if (!record) return;
+
+            const percentage = parseInt(document.getElementById('record-moderation-percentage').value, 10);
+            const videoUrl = document.getElementById('record-moderation-video').value.trim();
+            const status = document.getElementById('record-moderation-status').value;
+            const reason = document.getElementById('record-moderation-reason').value.trim();
+            const enjoymentRating = percentage === 100
+                ? document.getElementById('record-moderation-enjoyment').value
+                : '';
+
+            if (!Number.isInteger(percentage) || percentage < 1 || percentage > 100) {
+                alert('Percentage must be between 1 and 100.');
+                return;
+            }
+
+            try {
+                const data = await runRecordModerationRequest(`/api/admin/users/${record.user_id}/records/${record.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ percentage, videoUrl, enjoymentRating, status, reason })
+                });
+                alert(data.message || 'Record updated.');
+                closeRecordModeration();
+                await loadDemon();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
+        async function deleteModeratedRecord() {
+            const record = activeModeratedRecord;
+            if (!record || !confirm('Delete this record?')) return;
+
+            const reason = document.getElementById('record-moderation-reason').value.trim();
+            try {
+                const data = await runRecordModerationRequest(`/api/admin/users/${record.user_id}/records/${record.id}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                });
+                alert(data.message || 'Record deleted.');
+                closeRecordModeration();
+                await loadDemon();
+            } catch (err) {
+                alert(err.message);
+            }
         }
 
         function levelNotFound() {
@@ -1070,9 +1459,14 @@
                 videoContainer.innerHTML = getEmbedHtml(data.showcase_link);
             }
 
+            await loadRecordModerationPermissions();
+
             const list = document.getElementById('records-list');
             const verifierContainer = document.getElementById('verifier-container');
             const records = Array.isArray(data.records) ? data.records : [];
+            recordModerationCache = new Map(records
+                .map(record => [Number(record.id), record])
+                .filter(([recordId]) => Number.isInteger(recordId)));
 
             verifierContainer.innerHTML = "";
 
@@ -1090,6 +1484,7 @@
                     verifierContainer.innerHTML = `
                         <div class="verifier-row">
                             <span>Verifier: <a href="${getProfileUrl(verifier.username)}">${escapeHtml(verifierDisplayName)}</a></span>
+                            ${getRecordModerationButton(verifier)}
                         </div>
                     `;
                 }
@@ -1109,7 +1504,10 @@
                                 ${getUserNameLink(r)}
                                 <span style="color:${percentageColor}"> - ${escapeHtml(r.percentage)}%</span>
                             </span>
-                            <a href="${escapeHtml(r.video_url)}" target="_blank" class="proof">Watch</a>
+                            <span class="record-row-right">
+                                <a href="${escapeHtml(r.video_url)}" target="_blank" class="proof">Watch</a>
+                                ${getRecordModerationButton(r)}
+                            </span>
                         </div>
                     `;
                 }).join('');
@@ -1208,6 +1606,14 @@
                 console.error("History failed to load:", err);
             }
         }
+
+        document.getElementById('record-moderation-overlay').addEventListener('click', event => {
+            if (event.target === event.currentTarget) closeRecordModeration();
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeRecordModeration();
+        });
 
         loadDemon();
     </script>

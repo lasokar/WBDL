@@ -329,6 +329,7 @@ async function loadNavbar() {
                     <button class="dropbtn" type="button">Menu</button>
                     <div class="dropdown-content">
                         <a href="/profile?user=${user.username}">My Profile</a>
+                        ${user.clanName ? `<a href="/clans/${encodeURIComponent(user.clanName)}">My Clan</a>` : ''}
                         <a href="/account-settings">Account Settings</a>
                         <a href="/submit">Record Submitter</a>
 
@@ -392,6 +393,7 @@ async function loadNavbar() {
                     <span>${brandName}</span>
                 </a>
                 <a href="/leaderboard" style="${navLink}">Leaderboard</a>
+                <a href="/clans" style="${navLink}">Clans</a>
                 <a href="/changelog" style="${navLink}">Changelog</a>
                 <a href="javascript:openTimeMachine()" style="${navLink}">Time Machine</a>
                 ${listSwapLink}
@@ -434,6 +436,7 @@ async function loadFooter() {
                 <a href="/about" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 6px; transition: color 0.15s;">About WBDL</a>
                 <a href="/guidelines" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 6px; transition: color 0.15s;">Submission Rules</a>
                 <a href="/leaderboard" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 6px; transition: color 0.15s;">Leaderboard</a>
+                <a href="/clans" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 6px; transition: color 0.15s;">Clans</a>
                 <a href="/changelog" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 6px; transition: color 0.15s;">List Changes</a>
                 <a href="/staff" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 0; transition: color 0.15s;">Staff</a>
             </div>
@@ -469,8 +472,8 @@ async function updateNotiBadge() {
     
     const badge = document.getElementById('noti-badge');
     if (unreadCount > 0) {
-        badge.innerText = unreadCount;
-        badge.style.display = 'block';
+        badge.innerText = unreadCount > 9 ? '9+' : String(unreadCount);
+        badge.style.display = 'flex';
     } else {
         badge.style.display = 'none';
     }

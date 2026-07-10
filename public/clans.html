@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clans | WBDL</title>
+    <link rel="icon" type="image/png" href="/assets/icon.png">
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .page-content {
+            flex: 1 0 auto;
+            width: 100%;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 50px 20px 120px;
+            box-sizing: border-box;
+        }
+
+        .page-header,
+        .clan-hero {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+
+        .page-header-row,
+        .clan-hero-row,
+        .section-heading,
+        .management-heading {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        h1, h2, h3, h4 { color: var(--text); }
+        h1 { margin: 0; }
+        h2, h3 { margin: 0; }
+
+        .muted { color: var(--text-muted); }
+        .error-message { color: #ff6b6b; text-align: center; padding: 18px; }
+        .empty-state { color: var(--text-muted); text-align: center; padding: 32px 16px; }
+
+        .primary-btn,
+        .secondary-btn,
+        .danger-btn,
+        .text-btn {
+            border-radius: var(--radius-sm);
+            padding: 10px 14px;
+            font: inherit;
+            font-weight: 800;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+        }
+
+        .primary-btn { border: 0; background: var(--accent); color: #000; }
+        .secondary-btn { border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
+        .danger-btn { border: 1px solid #c73f3f; background: #a82f2f; color: #fff; }
+        .text-btn { border: 0; background: transparent; color: var(--text-muted); padding-left: 0; }
+        button:disabled { opacity: 0.52; cursor: not-allowed; }
+
+        .clan-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .clan-table th,
+        .clan-table td {
+            padding: 15px 18px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .clan-table th {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .clan-table tr:last-child td { border-bottom: 0; }
+        .clan-table tbody tr { cursor: pointer; transition: background 0.15s; }
+        .clan-table tbody tr:hover { background: var(--surface-2); }
+
+        .clan-cell {
+            display: flex;
+            align-items: center;
+            gap: 13px;
+            min-width: 0;
+        }
+
+        .clan-icon-small,
+        .clan-icon-large {
+            object-fit: cover;
+            image-rendering: auto;
+            background: var(--bg);
+            border: 1px solid var(--border);
+        }
+
+        .clan-icon-small { width: 46px; height: 46px; border-radius: 10px; }
+        .clan-icon-large { width: 96px; height: 96px; border-radius: 16px; flex: 0 0 auto; }
+        .clan-name { font-family: var(--font-display); font-size: 1.12rem; color: var(--text); }
+        .clan-description-preview { color: var(--text-muted); font-size: 0.88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+        .rank { color: var(--text-muted); font-family: var(--font-display); width: 58px; }
+        .rank-1 { color: #ffcf40; }
+        .rank-2 { color: #cdd2d8; }
+        .rank-3 { color: #d08a4f; }
+        .points { color: var(--accent); font-family: var(--font-display); text-align: right !important; }
+
+        .clan-hero-main { display: flex; align-items: center; gap: 20px; min-width: 0; }
+        .clan-hero-copy { min-width: 0; }
+        .clan-hero-copy h1 { font-family: var(--font-display); font-size: 2rem; }
+        .clan-hero-copy p { margin: 8px 0 0; color: var(--text-muted); line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+        .clan-stats { display: flex; gap: 28px; flex-wrap: wrap; justify-content: flex-end; }
+        .clan-stat { text-align: center; min-width: 82px; }
+        .clan-stat-label { display: block; color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 5px; }
+        .clan-stat-value { color: var(--text); font-family: var(--font-display); font-size: 1.15rem; }
+
+        .notice-card,
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 22px;
+            margin-bottom: 22px;
+        }
+
+        .notice-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .notice-card p { margin: 0; color: var(--text); }
+        .button-row { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
+
+        .members-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .member-card,
+        .application-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px;
+        }
+
+        .member-card-head,
+        .application-user {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .user-icon-host {
+            width: 48px;
+            height: 48px;
+            min-width: 48px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .user-icon-host .gd-icon-canvas {
+            width: 44px;
+            height: 44px;
+            max-width: 44px;
+            max-height: 44px;
+            object-fit: contain;
+            image-rendering: auto;
+        }
+
+        .member-copy { min-width: 0; flex: 1; }
+        .member-name { color: var(--text); font-weight: 800; text-decoration: none; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .member-name:hover { color: var(--accent); }
+        .member-meta { color: var(--text-muted); font-size: 0.82rem; margin-top: 3px; text-transform: capitalize; }
+        .member-points {
+            color: var(--accent);
+            font-family: var(--font-display);
+            font-size: 0.92rem;
+            margin-left: auto;
+            padding-left: 10px;
+            white-space: nowrap;
+            text-align: right;
+        }
+        .clan-actions {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 9px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+        .member-actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 11px; }
+        .member-actions button { padding: 7px 9px; font-size: 0.8rem; }
+
+        .management-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 18px; }
+        .management-box { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; }
+        .management-box h4 { margin: 0 0 13px; }
+        .application-card { margin-top: 9px; }
+        .application-card .button-row { margin-top: 12px; }
+
+        input, textarea {
+            width: 100%;
+            box-sizing: border-box;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 11px 12px;
+            font: inherit;
+        }
+        textarea { min-height: 110px; resize: vertical; }
+        label { color: var(--text); font-weight: 800; display: block; margin-bottom: 7px; }
+        .field { margin-bottom: 14px; }
+        .help-text { color: var(--text-muted); font-size: 0.8rem; margin-top: 6px; }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+            background: rgba(0,0,0,0.72);
+            z-index: 1000;
+        }
+        .modal-overlay.visible { display: flex; }
+        .modal {
+            width: min(100%, 520px);
+            max-height: 88vh;
+            overflow-y: auto;
+            position: relative;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            box-sizing: border-box;
+            box-shadow: 0 20px 70px rgba(0,0,0,0.5);
+        }
+        .modal h2 { margin: 0 0 20px; }
+        .modal-close { position: absolute; top: 14px; right: 16px; background: transparent; border: 0; color: var(--text-muted); font-size: 1.6rem; cursor: pointer; }
+        .icon-upload-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .icon-preview { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); }
+        .icon-file-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        .icon-upload-control { min-width: 0; flex: 1; }
+        .icon-upload-button { margin: 0; }
+        .icon-file-name {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            margin-top: 7px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 700px) {
+            .page-content { padding: 28px 12px 90px; }
+            .clan-table th:nth-child(3), .clan-table td:nth-child(3) { display: none; }
+            .clan-table th, .clan-table td { padding: 13px 10px; }
+            .clan-description-preview { max-width: 180px; }
+            .clan-hero-row { align-items: flex-start; }
+            .clan-hero-main { align-items: flex-start; }
+            .clan-icon-large { width: 76px; height: 76px; }
+            .clan-stats { width: 100%; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+    <div id="global-nav"></div>
+
+    <main class="page-content">
+        <div id="clan-index-view">
+            <header id="clans-header" class="page-header" style="display:none;">
+                <div class="page-header-row">
+                    <div>
+                        <h1>Clans</h1>
+                        <p class="muted" style="margin:8px 0 0;">Group up with other players to grind the leaderboard together.</p>
+                    </div>
+                    <div id="index-actions" class="button-row"></div>
+                </div>
+            </header>
+
+            <div id="clan-list-loading" class="panel empty-state">Loading clans...</div>
+            <div id="clan-list-wrap" style="display:none;">
+                <table class="clan-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Clan</th>
+                            <th>Members</th>
+                            <th style="text-align:right;">Points</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clan-list-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="clan-detail-view" style="display:none;">
+            <button type="button" class="text-btn" onclick="showClanIndex()">← Back to clans</button>
+            <div id="clan-detail-loading" class="panel empty-state">Loading clan...</div>
+            <div id="clan-detail-content" style="display:none;"></div>
+        </div>
+    </main>
+
+    <div id="clan-form-overlay" class="modal-overlay" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clan-form-title">
+            <button type="button" class="modal-close" onclick="closeClanForm()" aria-label="Close">&times;</button>
+            <h2 id="clan-form-title">Create Clan</h2>
+            <form id="clan-form">
+                <div class="field">
+                    <label for="clan-name-input">Clan tag</label>
+                    <input id="clan-name-input" maxlength="4" pattern="[A-Za-z0-9]{1,4}" autocomplete="off" required>
+                    <div class="help-text">Max: 4 characters</div>
+                </div>
+                <div class="field">
+                    <label for="clan-description-input">Description</label>
+                    <input id="clan-description-input" type="text" maxlength="50" autocomplete="off">
+                </div>
+                <div class="field">
+                    <label for="clan-icon-input">Clan Logo</label>
+                    <div class="icon-upload-row">
+                        <img id="clan-icon-preview" class="icon-preview" alt="Clan icon preview" hidden>
+                        <div class="icon-upload-control">
+                            <input id="clan-icon-input" class="icon-file-input" type="file" accept="image/png,image/jpeg,image/webp">
+                            <label class="secondary-btn icon-upload-button" for="clan-icon-input">Choose image</label>
+                            <div id="clan-icon-file-name" class="icon-file-name">No image selected</div>
+                        </div>
+                    </div>
+                </div>
+                <div id="clan-form-error" class="error-message" style="display:none;"></div>
+                <div class="button-row" style="justify-content:flex-end;">
+                    <button type="button" class="secondary-btn" onclick="closeClanForm()">Cancel</button>
+                    <button id="clan-form-submit" type="submit" class="primary-btn">Create Clan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/nav.js"></script>
+    <script>
+'use strict';
+
+window.WBDLIconRenderer = (() => {
+            const ICON_CATEGORY_CONFIG = {
+                cube: { key: 'cube', label: 'Cube', folder: 'cubes', prefix: 'player' },
+                ship: { key: 'ship', label: 'Ship', folder: 'ships', prefix: 'ship' },
+                ball: { key: 'ball', label: 'Ball', folder: 'balls', prefix: 'player_ball' },
+                ufo: { key: 'ufo', label: 'UFO', folder: 'ufos', prefix: 'bird' },
+                wave: { key: 'wave', label: 'Wave', folder: 'waves', prefix: 'dart' },
+                robot: { key: 'robot', label: 'Robot', folder: 'robots', prefix: 'robot' },
+                spider: { key: 'spider', label: 'Spider', folder: 'spiders', prefix: 'spider' },
+                swing: { key: 'swing', label: 'Swing', folder: 'swings', prefix: 'swing' },
+                jetpack: { key: 'jetpack', label: 'Jetpack', folder: 'jetpacks', prefix: 'jetpack' },
+            };
+
+            let colorsPromise = null;
+            const animDescCache = {};
+
+            function getCategory(type) {
+                return ICON_CATEGORY_CONFIG[type] || ICON_CATEGORY_CONFIG.cube;
+            }
+
+            function getCategories() {
+                return Object.values(ICON_CATEGORY_CONFIG);
+            }
+
+            function getAssetUrl(path) {
+                return new URL(path.replace(/^\/+/, ''), window.location.origin + '/').href;
+            }
+
+            async function loadColors() {
+                if (!colorsPromise) {
+                    colorsPromise = fetch('/assets/colors.json')
+                        .then(res => res.ok ? res.json() : {})
+                        .catch(() => ({}));
+                }
+                return colorsPromise;
+            }
+
+            async function getColor(colorId, fallback) {
+                const colors = await loadColors();
+                const color = colors[String(colorId)] || fallback;
+                return {
+                    r: Number(color?.r ?? fallback.r),
+                    g: Number(color?.g ?? fallback.g),
+                    b: Number(color?.b ?? fallback.b),
+                };
+            }
+
+            function parsePlistFrames(xmlText) {
+                const cleaned = String(xmlText || '').replace(/^[^<]+/, '').replace(/<!DOCTYPE[^[>]*(?:\[[^\]]*\])?>/i, '');
+                const doc = new DOMParser().parseFromString(cleaned, 'text/xml');
+
+                function parseNode(el) {
+                    switch (el.tagName) {
+                        case 'dict': {
+                            const obj = {};
+                            const kids = Array.from(el.children);
+                            for (let i = 0; i + 1 < kids.length; i += 2) {
+                                obj[kids[i].textContent] = parseNode(kids[i + 1]);
+                            }
+                            return obj;
+                        }
+                        case 'array': return Array.from(el.children).map(parseNode);
+                        case 'string': return el.textContent;
+                        case 'integer': return parseInt(el.textContent, 10);
+                        case 'real': return parseFloat(el.textContent);
+                        case 'true': return true;
+                        case 'false': return false;
+                        default: return el.textContent;
+                    }
+                }
+
+                if (doc.querySelector('parsererror')) return {};
+                const rootEl = doc.querySelector('plist > dict') || doc.querySelector('dict');
+                if (!rootEl) return {};
+                const root = parseNode(rootEl);
+                return (root && root.frames) || root || {};
+            }
+
+            function parseGDCoord(str) {
+                return ((str || '').match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+            }
+
+            function normalizeAtlasFrame(frame) {
+                if (!frame) return null;
+                return {
+                    textureRect: frame.textureRect || frame.frame || frame.frameRect || frame.rect || null,
+                    spriteSourceSize: frame.spriteSourceSize || frame.sourceSize || frame.spriteSize || frame.spriteRect || null,
+                    spriteOffset: frame.spriteOffset || frame.offset || '{0,0}',
+                    textureRotated: frame.textureRotated ?? frame.rotated ?? false,
+                };
+            }
+
+            function getAtlasRenderPrefix(frameKeys, baseName) {
+                const hasMatchingFrames = frameKeys.some(key => key.startsWith(`${baseName}_`) && key.endsWith('_001.png'));
+                return hasMatchingFrames ? baseName : null;
+            }
+
+            function compareAtlasLayers(left, right) {
+                const parseInfo = (key) => {
+                    const tokens = key.replace(/_001\.png$/, '').split('_').slice(2);
+                    const isExtra = tokens.includes('extra');
+                    const isNumberedPart = !isExtra && tokens.length > 1 && /^\d+$/.test(tokens[1]);
+                    const priority = isExtra ? 2 : isNumberedPart ? 1 : 0;
+                    const normalizedTokens = tokens.map(token => (/^\d+$/.test(token) ? Number(token) : token));
+                    return { priority, tokens: normalizedTokens };
+                };
+
+                const leftInfo = parseInfo(left);
+                const rightInfo = parseInfo(right);
+                if (leftInfo.priority !== rightInfo.priority) return leftInfo.priority - rightInfo.priority;
+
+                const maxLength = Math.max(leftInfo.tokens.length, rightInfo.tokens.length);
+                for (let i = 0; i < maxLength; i++) {
+                    const l = leftInfo.tokens[i];
+                    const r = rightInfo.tokens[i];
+                    if (l === undefined) return -1;
+                    if (r === undefined) return 1;
+                    if (l === r) continue;
+                    if (typeof l === 'number' && typeof r === 'number') return l - r;
+                    if (typeof l === 'number') return -1;
+                    if (typeof r === 'number') return 1;
+                    return String(l).localeCompare(String(r));
+                }
+                return left.localeCompare(right);
+            }
+
+            function tintCanvas(canvas, color, keepShading = true) {
+                const ctx = canvas.getContext('2d');
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const pixels = imageData.data;
+
+                for (let i = 0; i < pixels.length; i += 4) {
+                    const alpha = pixels[i + 3];
+                    if (!alpha) continue;
+
+                    const r = pixels[i];
+                    const g = pixels[i + 1];
+                    const b = pixels[i + 2];
+                    const brightness = (r + g + b) / 3;
+
+                    if (brightness < 52) {
+                        continue;
+                    }
+
+                    const shade = keepShading
+                        ? Math.max(0.35, Math.min(1, brightness / 255))
+                        : 1;
+
+                    pixels[i] = Math.round(color.r * shade);
+                    pixels[i + 1] = Math.round(color.g * shade);
+                    pixels[i + 2] = Math.round(color.b * shade);
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+                return canvas;
+            }
+
+            function makeFallbackCanvas(label = '?') {
+                const canvas = document.createElement('canvas');
+                canvas.width = 96;
+                canvas.height = 96;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+                ctx.strokeRect(0.5, 0.5, canvas.width - 1, canvas.height - 1);
+                ctx.fillStyle = 'rgba(255,255,255,0.72)';
+                ctx.font = 'bold 42px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(label, canvas.width / 2, canvas.height / 2);
+                return canvas;
+            }
+
+            async function renderIcon({ type = 'cube', id = 1, color1 = 12, color2 = 3, glow = -1 } = {}, options = {}) {
+                const category = getCategory(type);
+                const iconNum = Math.max(1, parseInt(id, 10) || 1);
+                const numStr = String(iconNum).padStart(2, '0');
+                const baseName = `${category.prefix}_${numStr}`;
+                const assetQuality = options.quality === 'uhd' ? 'uhd' : 'hd';
+                const assetName = `${baseName}-${assetQuality}`;
+                const iconPath = `/assets/icons/${category.folder}/${assetName}`;
+
+                const [mainColor, secondColor, glowColor] = await Promise.all([
+                    getColor(color1, { r: 0, g: 230, b: 118 }),
+                    getColor(color2, { r: 255, g: 255, b: 255 }),
+                    getColor(glow, { r: 255, g: 255, b: 255 }),
+                ]);
+
+                let frames;
+                try {
+                    const resp = await fetch(`${iconPath}.plist`);
+                    if (!resp.ok) return makeFallbackCanvas(String(iconNum));
+                    frames = parsePlistFrames(await resp.text());
+                } catch (err) {
+                    return makeFallbackCanvas(String(iconNum));
+                }
+
+                const texture = await new Promise(resolve => {
+                    const img = new Image();
+                    img.onload = () => resolve(img);
+                    img.onerror = () => resolve(null);
+                    img.src = getAssetUrl(`${iconPath}.png`);
+                });
+                if (!texture) return makeFallbackCanvas(String(iconNum));
+
+                const frameKeys = Object.keys(frames);
+                const renderPrefix = getAtlasRenderPrefix(frameKeys, baseName);
+                if (!renderPrefix) return makeFallbackCanvas(String(iconNum));
+                const baseLen = renderPrefix.length + 1;
+
+                const glowLayerKeys = frameKeys
+                    .filter(key => key.startsWith(`${renderPrefix}_`) && key.endsWith('_001.png') && key.includes('_glow_'))
+                    .sort(compareAtlasLayers);
+
+                const layerKeys = frameKeys
+                    .filter(key => key.startsWith(`${renderPrefix}_`) && key.endsWith('_001.png') && !key.includes('_glow_'))
+                    .sort(compareAtlasLayers)
+                    .sort((left, right) => {
+                        const leftPart = left.slice(baseLen, -'_001.png'.length);
+                        const rightPart = right.slice(baseLen, -'_001.png'.length);
+                        const leftIsBody = leftPart === '001';
+                        const rightIsBody = rightPart === '001';
+                        const leftIsSecond = /(?:^|_)0*2$/.test(leftPart);
+                        const rightIsSecond = /(?:^|_)0*2$/.test(rightPart);
+                        if (leftIsSecond !== rightIsSecond) return leftIsSecond ? -1 : 1;
+                        if (leftIsBody !== rightIsBody) return leftIsBody ? 1 : -1;
+                        return 0;
+                    });
+
+                if (!layerKeys.length) return makeFallbackCanvas(String(iconNum));
+
+                if (category.key === 'robot' || category.key === 'spider') {
+                    const animDescFilename = category.key === 'robot' ? 'Robot_AnimDesc.plist' : 'Spider_AnimDesc.plist';
+                    const animDescUrl = getAssetUrl(`/assets/icons/${animDescFilename}`);
+
+                    if (animDescCache[animDescUrl] === undefined) {
+                        try {
+                            const ar = await fetch(animDescUrl);
+                            animDescCache[animDescUrl] = ar.ok ? parsePlistFrames(await ar.text()) : null;
+                        } catch (err) {
+                            animDescCache[animDescUrl] = null;
+                        }
+                    }
+
+                    const animDesc = animDescCache[animDescUrl];
+
+                    const idleKey = category.key === 'robot' ? 'Robot_idle_001.png' : 'Spider_idle_001.png';
+                    const idleFrame = animDesc && animDesc.animationContainer && animDesc.animationContainer[idleKey];
+
+                    if (idleFrame) {
+                        const SCALE = assetQuality === 'uhd' ? 4 : 2;
+                        const prefix01 = `${category.prefix}_01_`;
+
+                        function actualTex(name) {
+                            return String(name || '').replace(prefix01, `${renderPrefix}_`);
+                        }
+
+                        const spriteList = Object.values(idleFrame)
+                            .filter(sprite => sprite && sprite.texture)
+                            .sort((a, b) => (parseInt(a.zValue, 10) || 0) - (parseInt(b.zValue, 10) || 0));
+
+                        let minX = 0;
+                        let minY = 0;
+                        let maxX = 1;
+                        let maxY = 1;
+
+                        function getSpriteTransform(sprite) {
+                            const [px = 0, py = 0] = parseGDCoord(sprite.position);
+                            const [sxRaw = 1, syRaw = 1] = parseGDCoord(sprite.scale);
+                            const [flipXRaw = 0, flipYRaw = 0] = parseGDCoord(sprite.flipped);
+                            const sx = Number.isFinite(sxRaw) ? sxRaw : 1;
+                            const sy = Number.isFinite(syRaw) ? syRaw : 1;
+                            const rot = (parseFloat(sprite.rotation) || 0) * Math.PI / 180;
+                            const flipX = flipXRaw ? -1 : 1;
+                            const flipY = flipYRaw ? -1 : 1;
+                            return { px, py, sx, sy, rot, flipX, flipY };
+                        }
+
+                        for (const sprite of spriteList) {
+                            const frame = normalizeAtlasFrame(frames[actualTex(sprite.texture)]);
+                            if (!frame) continue;
+
+                            const [, , rw = 0, rh = 0] = parseGDCoord(frame.textureRect);
+                            const [ox = 0, oy = 0] = parseGDCoord(frame.spriteOffset);
+                            const { px, py, sx, sy, rot, flipX, flipY } = getSpriteTransform(sprite);
+                            const cosR = Math.cos(rot);
+                            const sinR = Math.sin(rot);
+
+                            for (const [cornerX, cornerY] of [
+                                [ox - rw / 2, -oy - rh / 2],
+                                [ox + rw / 2, -oy - rh / 2],
+                                [ox - rw / 2, -oy + rh / 2],
+                                [ox + rw / 2, -oy + rh / 2],
+                            ]) {
+                                const scx = cornerX * sx * flipX;
+                                const scy = cornerY * sy * flipY;
+                                const wx = px * SCALE + scx * cosR - scy * sinR;
+                                const wy = -py * SCALE + scx * sinR + scy * cosR;
+                                if (wx < minX) minX = wx;
+                                if (wx > maxX) maxX = wx;
+                                if (wy < minY) minY = wy;
+                                if (wy > maxY) maxY = wy;
+                            }
+                        }
+
+                        const renderScale = 2;
+                        const logicalW = Math.max(1, Math.ceil(maxX - minX));
+                        const logicalH = Math.max(1, Math.ceil(maxY - minY));
+                        const canvas = document.createElement('canvas');
+                        canvas.width = logicalW * renderScale;
+                        canvas.height = logicalH * renderScale;
+                        canvas.style.width = `${logicalW}px`;
+                        canvas.style.height = `${logicalH}px`;
+                        const ctx = canvas.getContext('2d');
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = 'high';
+                        ctx.scale(renderScale, renderScale);
+
+                        function drawTex(texName, sprite, tintColor) {
+                            const frame = normalizeAtlasFrame(frames[texName]);
+                            if (!frame) return;
+
+                            const [rx, ry, rw, rh] = parseGDCoord(frame.textureRect);
+                            const [ox = 0, oy = 0] = parseGDCoord(frame.spriteOffset);
+                            const rotated = frame.textureRotated === true;
+
+                            const tmp = document.createElement('canvas');
+                            tmp.width = rw;
+                            tmp.height = rh;
+                            const tctx = tmp.getContext('2d');
+                            tctx.imageSmoothingEnabled = true;
+                            tctx.imageSmoothingQuality = 'high';
+
+                            if (rotated) {
+                                tctx.save();
+                                tctx.translate(rw / 2, rh / 2);
+                                tctx.rotate(-Math.PI / 2);
+                                tctx.drawImage(texture, rx, ry, rh, rw, -rh / 2, -rw / 2, rh, rw);
+                                tctx.restore();
+                            } else {
+                                tctx.drawImage(texture, rx, ry, rw, rh, 0, 0, rw, rh);
+                            }
+
+                            if (tintColor) {
+                                tintCanvas(tmp, tintColor, true);
+                            }
+
+                            const { px, py, sx, sy, rot, flipX, flipY } = getSpriteTransform(sprite);
+                            ctx.save();
+                            ctx.translate(-minX + px * SCALE, -minY - py * SCALE);
+                            ctx.rotate(rot);
+                            ctx.scale(sx * flipX, sy * flipY);
+                            ctx.drawImage(tmp, 0, 0, rw, rh, ox - rw / 2, -oy - rh / 2, rw, rh);
+                            ctx.restore();
+                        }
+
+                        if (Number(glow) >= 0) {
+                            for (const sprite of spriteList) {
+                                const mainName = actualTex(sprite.texture);
+                                drawTex(mainName.replace('_001.png', '_glow_001.png'), sprite, glowColor);
+                            }
+                        }
+
+                        for (const sprite of spriteList) {
+                            const mainName = actualTex(sprite.texture);
+                            drawTex(mainName.replace('_001.png', '_2_001.png'), sprite, secondColor);
+                        }
+
+                        for (const sprite of spriteList) {
+                            const mainName = actualTex(sprite.texture);
+                            drawTex(mainName, sprite, mainColor);
+                        }
+
+                        for (const sprite of spriteList) {
+                            const mainName = actualTex(sprite.texture);
+                            drawTex(mainName.replace('_001.png', '_extra_001.png'), sprite, null);
+                        }
+
+                        return canvas;
+                    }
+                }
+
+                let canvW = 1;
+                let canvH = 1;
+                for (const key of [...layerKeys, ...(Number(glow) >= 0 ? glowLayerKeys : [])]) {
+                    const frame = normalizeAtlasFrame(frames[key]);
+                    if (!frame) continue;
+                    const [ssw, ssh] = parseGDCoord(frame.spriteSourceSize);
+                    if (ssw > canvW) canvW = ssw;
+                    if (ssh > canvH) canvH = ssh;
+                }
+
+                const renderScale = 2;
+                const logicalW = Math.max(1, Math.ceil(canvW));
+                const logicalH = Math.max(1, Math.ceil(canvH));
+                const canvas = document.createElement('canvas');
+                canvas.width = logicalW * renderScale;
+                canvas.height = logicalH * renderScale;
+                canvas.style.width = `${logicalW}px`;
+                canvas.style.height = `${logicalH}px`;
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.scale(renderScale, renderScale);
+
+                function drawAtlasLayer(key, tintColor = null) {
+                    const frame = normalizeAtlasFrame(frames[key]);
+                    if (!frame) return;
+
+                    const [rx, ry, rw, rh] = parseGDCoord(frame.textureRect);
+                    const [ox = 0, oy = 0] = parseGDCoord(frame.spriteOffset);
+                    const rotated = frame.textureRotated === true;
+                    const tmp = document.createElement('canvas');
+                    tmp.width = rw;
+                    tmp.height = rh;
+                    const tctx = tmp.getContext('2d');
+                    tctx.imageSmoothingEnabled = true;
+                    tctx.imageSmoothingQuality = 'high';
+
+                    if (rotated) {
+                        tctx.save();
+                        tctx.translate(rw / 2, rh / 2);
+                        tctx.rotate(-Math.PI / 2);
+                        tctx.drawImage(texture, rx, ry, rh, rw, -rh / 2, -rw / 2, rh, rw);
+                        tctx.restore();
+                    } else {
+                        tctx.drawImage(texture, rx, ry, rw, rh, 0, 0, rw, rh);
+                    }
+
+                    if (tintColor) {
+                        tintCanvas(tmp, tintColor, true);
+                    }
+
+                    const ufoYOffset = category.key === 'ufo' ? 10 : 0;
+                    const dx = logicalW / 2 + ox - rw / 2;
+                    const dy = logicalH / 2 - oy - rh / 2 + ufoYOffset;
+                    ctx.drawImage(tmp, 0, 0, rw, rh, dx, dy, rw, rh);
+                }
+
+                if (Number(glow) >= 0) {
+                    for (const key of glowLayerKeys) {
+                        drawAtlasLayer(key, glowColor);
+                    }
+                }
+
+                for (const key of layerKeys) {
+                    const part = key.slice(baseLen, -'_001.png'.length);
+                    const isSecondary = /(?:^|_)0*2$/.test(part);
+                    const isExtra = /extra/.test(part);
+                    drawAtlasLayer(key, isExtra ? null : (isSecondary ? secondColor : mainColor));
+                }
+
+                return canvas;
+            }
+
+            async function renderInto(host, icon, options = {}) {
+                if (!host) return;
+                host.textContent = '';
+                host.classList.add('is-loading');
+                const rendered = await renderIcon(icon, options);
+                rendered.className = 'gd-icon-canvas';
+                rendered.style.imageRendering = 'auto';
+                host.classList.remove('is-loading');
+                host.replaceChildren(rendered);
+            }
+
+            return { getCategories, loadColors, renderIcon, renderInto };
+        })();
+    </script>
+    <script>
+        const state = {
+            index: null,
+            detail: null,
+            editing: false,
+            compressedIcon: '',
+        };
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatClanName(name) {
+            return `[${String(name || '').trim()}]`;
+        }
+
+        async function api(url, options = {}) {
+            const response = await fetch(url, options);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Request failed.');
+            return data;
+        }
+
+        function normalizeClanPathName(value) {
+            return String(value || '').trim().toUpperCase();
+        }
+
+        function getClanNameFromPath() {
+            const match = window.location.pathname.match(/^\/clans\/([A-Za-z0-9]{1,4})\/?$/i);
+            if (!match) return '';
+            try {
+                return normalizeClanPathName(decodeURIComponent(match[1]));
+            } catch (_) {
+                return '';
+            }
+        }
+
+        function getClanUrl(name) {
+            return `/clans/${encodeURIComponent(normalizeClanPathName(name))}`;
+        }
+
+        function setClanPath(name, { replace = false } = {}) {
+            const target = name ? getClanUrl(name) : '/clans';
+            const method = replace ? 'replaceState' : 'pushState';
+            history[method]({}, '', target);
+        }
+
+        async function ensureClanIndex() {
+            if (!state.index) state.index = await api('/api/clans');
+            return state.index;
+        }
+
+        function findClan(clanRef) {
+            const clans = state.index?.clans || [];
+            if (typeof clanRef === 'number') {
+                return clans.find(clan => Number(clan.id) === clanRef) || null;
+            }
+
+            const name = normalizeClanPathName(clanRef);
+            return clans.find(clan => normalizeClanPathName(clan.name) === name) || null;
+        }
+
+        async function loadClanIndex() {
+            const loading = document.getElementById('clan-list-loading');
+            const wrap = document.getElementById('clan-list-wrap');
+            loading.style.display = 'block';
+            loading.textContent = 'Loading clans...';
+            wrap.style.display = 'none';
+
+            try {
+                state.index = await api('/api/clans');
+                renderClanIndex();
+                loading.style.display = 'none';
+                wrap.style.display = 'block';
+            } catch (err) {
+                loading.className = 'panel error-message';
+                loading.textContent = err.message;
+            }
+        }
+
+        function renderClanIndex() {
+            const data = state.index || { clans: [] };
+            const header = document.getElementById('clans-header');
+            const actions = document.getElementById('index-actions');
+            const hasClan = Boolean(data.myClanId);
+
+            header.style.display = hasClan ? 'none' : 'block';
+            if (data.loggedIn) {
+                actions.innerHTML = hasClan
+                    ? ''
+                    : '<button type="button" class="primary-btn" onclick="openCreateClanForm()">Create Clan</button>';
+            } else {
+                actions.innerHTML = '<a class="primary-btn" href="/login">Log in to create a clan</a>';
+            }
+
+            const body = document.getElementById('clan-list-body');
+            if (!data.clans.length) {
+                body.innerHTML = '<tr><td colspan="4" class="empty-state">No clans have been created yet.</td></tr>';
+                return;
+            }
+
+            body.innerHTML = data.clans.map(clan => `
+                <tr tabindex="0" onclick="openClan('${escapeHtml(clan.name)}')" onkeydown="if(event.key==='Enter'){openClan('${escapeHtml(clan.name)}')}">
+                    <td class="rank rank-${Number(clan.rank)}">#${Number(clan.rank)}</td>
+                    <td>
+                        <div class="clan-cell">
+                            <img class="clan-icon-small" src="${escapeHtml(clan.iconUrl)}" alt="">
+                            <div style="min-width:0;">
+                                <div class="clan-name">${escapeHtml(formatClanName(clan.name))}</div>
+                                <div class="clan-description-preview">${escapeHtml(clan.description || 'No description')}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="muted">${Number(clan.memberCount)}/8</td>
+                    <td class="points">${escapeHtml(clan.totalPoints)}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function openClan(clanRef, updateHistory = true) {
+            document.getElementById('clan-index-view').style.display = 'none';
+            document.getElementById('clan-detail-view').style.display = 'block';
+            const loading = document.getElementById('clan-detail-loading');
+            const content = document.getElementById('clan-detail-content');
+            loading.style.display = 'block';
+            loading.className = 'panel empty-state';
+            loading.textContent = 'Loading clan...';
+            content.style.display = 'none';
+
+            try {
+                await ensureClanIndex();
+                const clan = findClan(clanRef);
+                if (!clan) throw new Error('Clan not found.');
+
+                if (updateHistory) setClanPath(clan.name);
+                state.detail = await api(`/api/clans/${Number(clan.id)}`);
+
+                const canonicalName = normalizeClanPathName(state.detail?.clan?.name || clan.name);
+                if (!updateHistory && window.location.pathname !== getClanUrl(canonicalName)) {
+                    setClanPath(canonicalName, { replace: true });
+                }
+
+                document.title = `[${canonicalName}] Clan | WBDL`;
+                renderClanDetail();
+                loading.style.display = 'none';
+                content.style.display = 'block';
+            } catch (err) {
+                loading.className = 'panel error-message';
+                loading.textContent = err.message;
+            }
+        }
+
+        function showClanIndex(updateHistory = true) {
+            if (updateHistory) setClanPath(null);
+            state.detail = null;
+            document.title = 'Clans | WBDL';
+            document.getElementById('clan-detail-view').style.display = 'none';
+            document.getElementById('clan-index-view').style.display = 'block';
+            loadClanIndex();
+        }
+
+        function memberActionButtons(member, viewer) {
+            const clanId = Number(state.detail.clan.id);
+            if (!viewer.canManage || member.clanRole === 'owner') return '';
+            const controls = [];
+
+            if (viewer.canManage) {
+                if (member.clanRole === 'manager') {
+                    controls.push(`<button class="secondary-btn" type="button" onclick="setMemberRole(${member.id}, 'member')">Demote</button>`);
+                } else {
+                    controls.push(`<button class="secondary-btn" type="button" onclick="setMemberRole(${member.id}, 'manager')">Make manager</button>`);
+                }
+            }
+
+            if (member.clanRole === 'member' || viewer.isOwner) {
+                controls.push(`<button class="danger-btn" type="button" onclick="removeMember(${member.id}, '${escapeHtml(member.username)}')">Kick</button>`);
+            }
+
+            return controls.length ? `<div class="member-actions">${controls.join('')}</div>` : '';
+        }
+
+        function renderClanDetail() {
+            const { clan, members, viewer, management } = state.detail;
+            const content = document.getElementById('clan-detail-content');
+            let joinAction = '';
+            if (!viewer.role) {
+                if (!viewer.loggedIn) {
+                    joinAction = '<a href="/login" class="secondary-btn">Log in to apply</a>';
+                } else if (viewer.myClanId) {
+                    joinAction = '<button class="secondary-btn" type="button" disabled>You are already in a clan</button>';
+                } else if (viewer.application) {
+                    joinAction = '<button class="secondary-btn" type="button" disabled>Application pending</button>';
+                } else if (Number(clan.memberCount) >= 8) {
+                    joinAction = '<button class="secondary-btn" type="button" disabled>Clan full</button>';
+                } else if (viewer.canApply) {
+                    joinAction = '<button class="primary-btn" type="button" onclick="applyToClan()">Apply to join</button>';
+                }
+            }
+
+            if (viewer.role && viewer.role !== 'owner') {
+                joinAction += '<button class="secondary-btn" type="button" onclick="leaveClan()">Leave clan</button>';
+            }
+            if (viewer.canManage) {
+                joinAction += '<button class="secondary-btn" type="button" onclick="openEditClanForm()">Edit clan</button>';
+            }
+            if (viewer.isOwner) {
+                joinAction += '<button class="danger-btn" type="button" onclick="deleteClan()">Delete clan</button>';
+            }
+
+            content.innerHTML = `
+                <section class="clan-hero">
+                    <div class="clan-hero-row">
+                        <div class="clan-hero-main">
+                            <img class="clan-icon-large" src="${escapeHtml(clan.iconUrl)}" alt="${escapeHtml(clan.name)} icon">
+                            <div class="clan-hero-copy">
+                                <h1>${escapeHtml(formatClanName(clan.name))}</h1>
+                                <p>${escapeHtml(clan.description || 'No description')}</p>
+                            </div>
+                        </div>
+                        <div class="clan-stats">
+                            <div class="clan-stat"><span class="clan-stat-label">Rank</span><span class="clan-stat-value">#${Number(clan.rank)}</span></div>
+                            <div class="clan-stat"><span class="clan-stat-label">Members</span><span class="clan-stat-value">${Number(clan.memberCount)}/8</span></div>
+                            <div class="clan-stat"><span class="clan-stat-label">Points</span><span class="clan-stat-value" style="color:var(--accent);">${escapeHtml(clan.totalPoints)}</span></div>
+                        </div>
+                    </div>
+                    ${joinAction ? `<div class="clan-actions">${joinAction}</div>` : ''}
+                </section>
+
+                <section class="panel">
+                    <div class="section-heading"><h2>Members</h2></div>
+                    <div class="members-grid">
+                        ${members.map(member => `
+                            <article class="member-card">
+                                <div class="member-card-head">
+                                    <div id="member-icon-${member.id}" class="user-icon-host"></div>
+                                    <div class="member-copy">
+                                        <a class="member-name" href="/profile?user=${encodeURIComponent(member.username)}">${escapeHtml(member.displayName)}</a>
+                                        <div class="member-meta">${escapeHtml(member.clanRole)}</div>
+                                    </div>
+                                    <div class="member-points">${escapeHtml(member.totalPoints)} points</div>
+                                </div>
+                                ${memberActionButtons(member, viewer)}
+                            </article>
+                        `).join('')}
+                    </div>
+                </section>
+
+                ${viewer.canManage ? renderManagementPanel(management, viewer) : ''}
+            `;
+
+            for (const member of members) {
+                window.WBDLIconRenderer.renderInto(document.getElementById(`member-icon-${member.id}`), member.icon, { quality: 'uhd' });
+            }
+            for (const application of management?.applications || []) {
+                window.WBDLIconRenderer.renderInto(document.getElementById(`application-icon-${application.id}`), application.icon, { quality: 'uhd' });
+            }
+        }
+
+        function renderManagementPanel(management, viewer) {
+            const applications = management?.applications || [];
+            return `
+                <section class="panel">
+                    <div class="management-heading">
+                        <h2>Applications</h2>
+                    </div>
+                    <div class="management-grid">
+                        <div class="management-box">
+                            ${applications.length ? applications.map(application => `
+                                <div class="application-card">
+                                    <div class="application-user">
+                                        <div id="application-icon-${application.id}" class="user-icon-host"></div>
+                                        <div class="member-copy">
+                                            <a class="member-name" href="/profile?user=${encodeURIComponent(application.username)}">${escapeHtml(application.displayName)}</a>
+                                            <div class="member-meta">@${escapeHtml(application.username)}</div>
+                                        </div>
+                                    </div>
+                                    <div class="button-row">
+                                        <button class="primary-btn" type="button" onclick="respondApplication('${escapeHtml(application.id)}', 'accept')">Accept</button>
+                                        <button class="secondary-btn" type="button" onclick="respondApplication('${escapeHtml(application.id)}', 'reject')">Reject</button>
+                                    </div>
+                                </div>
+                            `).join('') : '<div class="muted">No pending applications.</div>'}
+                        </div>
+                    </div>
+                </section>
+            `;
+        }
+
+        async function applyToClan() {
+            try {
+                await api(`/api/clans/${state.detail.clan.id}/applications`, { method: 'POST' });
+                await openClan(state.detail.clan.id, false);
+            } catch (err) { alert(err.message); }
+        }
+
+        async function respondApplication(applicationId, action) {
+            try {
+                await api(`/api/clans/${state.detail.clan.id}/applications/${applicationId}/respond`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action })
+                });
+                await openClan(state.detail.clan.id, false);
+            } catch (err) { alert(err.message); }
+        }
+
+        async function setMemberRole(userId, role) {
+            try {
+                await api(`/api/clans/${state.detail.clan.id}/members/${userId}/role`, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role })
+                });
+                await openClan(state.detail.clan.id, false);
+            } catch (err) { alert(err.message); }
+        }
+
+        async function removeMember(userId, username) {
+            if (!confirm(`Remove ${username} from the clan?`)) return;
+            try {
+                await api(`/api/clans/${state.detail.clan.id}/members/${userId}`, { method: 'DELETE' });
+                await openClan(state.detail.clan.id, false);
+            } catch (err) { alert(err.message); }
+        }
+
+        async function leaveClan() {
+            if (!confirm('Leave this clan?')) return;
+            try {
+                await api(`/api/clans/${state.detail.clan.id}/leave`, { method: 'POST' });
+                showClanIndex();
+            } catch (err) { alert(err.message); }
+        }
+
+        async function deleteClan() {
+            if (!confirm(`Permanently delete ${state.detail.clan.name}? This cannot be undone.`)) return;
+            try {
+                await api(`/api/clans/${state.detail.clan.id}`, { method: 'DELETE' });
+                showClanIndex();
+            } catch (err) { alert(err.message); }
+        }
+
+        function openCreateClanForm() {
+            state.editing = false;
+            state.compressedIcon = '';
+            document.getElementById('clan-form-title').textContent = 'Create Clan';
+            document.getElementById('clan-form-submit').textContent = 'Create Clan';
+            document.getElementById('clan-name-input').value = '';
+            document.getElementById('clan-description-input').value = '';
+            document.getElementById('clan-icon-input').value = '';
+            const preview = document.getElementById('clan-icon-preview');
+            preview.removeAttribute('src');
+            preview.hidden = true;
+            document.getElementById('clan-icon-file-name').textContent = 'No image selected';
+            document.getElementById('clan-form-error').style.display = 'none';
+            showClanForm();
+        }
+
+        function openEditClanForm() {
+            state.editing = true;
+            state.compressedIcon = '';
+            document.getElementById('clan-form-title').textContent = 'Edit Clan';
+            document.getElementById('clan-form-submit').textContent = 'Save Changes';
+            document.getElementById('clan-name-input').value = state.detail.clan.name;
+            document.getElementById('clan-description-input').value = state.detail.clan.description || '';
+            document.getElementById('clan-icon-input').value = '';
+            const preview = document.getElementById('clan-icon-preview');
+            preview.src = state.detail.clan.iconUrl;
+            preview.hidden = false;
+            document.getElementById('clan-icon-file-name').textContent = '';
+            document.getElementById('clan-form-error').style.display = 'none';
+            showClanForm();
+        }
+
+        function showClanForm() {
+            const overlay = document.getElementById('clan-form-overlay');
+            overlay.classList.add('visible');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeClanForm() {
+            const overlay = document.getElementById('clan-form-overlay');
+            overlay.classList.remove('visible');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        function loadImage(file) {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                const url = URL.createObjectURL(file);
+                image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+                image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image.')); };
+                image.src = url;
+            });
+        }
+
+        async function compressClanIcon(file) {
+            if (!file || !/^image\/(png|jpeg|webp)$/i.test(file.type)) throw new Error('Choose a PNG, JPG, or WebP image.');
+            const image = await loadImage(file);
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+
+            const side = Math.min(image.naturalWidth, image.naturalHeight);
+            const sx = (image.naturalWidth - side) / 2;
+            const sy = (image.naturalHeight - side) / 2;
+            ctx.drawImage(image, sx, sy, side, side, 0, 0, 64, 64);
+
+            let dataUrl = canvas.toDataURL('image/webp', 0.82);
+            if (!dataUrl.startsWith('data:image/webp')) dataUrl = canvas.toDataURL('image/png');
+            return dataUrl;
+        }
+
+        document.getElementById('clan-icon-input').addEventListener('change', async event => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            try {
+                state.compressedIcon = await compressClanIcon(file);
+                const preview = document.getElementById('clan-icon-preview');
+                preview.src = state.compressedIcon;
+                preview.hidden = false;
+                document.getElementById('clan-icon-file-name').textContent = file.name || 'Image selected';
+            } catch (err) {
+                alert(err.message);
+                event.target.value = '';
+                const preview = document.getElementById('clan-icon-preview');
+                if (state.editing) {
+                    preview.src = state.detail.clan.iconUrl;
+                    preview.hidden = false;
+                } else {
+                    preview.removeAttribute('src');
+                    preview.hidden = true;
+                }
+                document.getElementById('clan-icon-file-name').textContent = state.editing ? 'Current icon' : 'No image selected';
+            }
+        });
+
+        document.getElementById('clan-form').addEventListener('submit', async event => {
+            event.preventDefault();
+            const error = document.getElementById('clan-form-error');
+            const submit = document.getElementById('clan-form-submit');
+            const payload = {
+                name: document.getElementById('clan-name-input').value,
+                description: document.getElementById('clan-description-input').value,
+            };
+            if (state.compressedIcon) payload.iconDataUrl = state.compressedIcon;
+            if (!state.editing && !state.compressedIcon) {
+                error.textContent = 'Please upload a clan icon.';
+                error.style.display = 'block';
+                return;
+            }
+
+            submit.disabled = true;
+            error.style.display = 'none';
+            try {
+                if (state.editing) {
+                    await api(`/api/clans/${state.detail.clan.id}`, {
+                        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                    });
+                    closeClanForm();
+                    state.index = await api('/api/clans');
+                    const updatedName = normalizeClanPathName(payload.name || state.detail.clan.name);
+                    setClanPath(updatedName, { replace: true });
+                    await openClan(updatedName, false);
+                } else {
+                    await api('/api/clans', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                    });
+                    closeClanForm();
+                    state.index = await api('/api/clans');
+                    await openClan(normalizeClanPathName(payload.name));
+                }
+            } catch (err) {
+                error.textContent = err.message;
+                error.style.display = 'block';
+            } finally {
+                submit.disabled = false;
+            }
+        });
+
+        document.getElementById('clan-form-overlay').addEventListener('click', event => {
+            if (event.target === event.currentTarget) closeClanForm();
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeClanForm();
+        });
+
+        window.addEventListener('popstate', async () => {
+            const clanName = getClanNameFromPath();
+            if (clanName) await openClan(clanName, false);
+            else showClanIndex(false);
+        });
+
+        (async function initialize() {
+            const clanName = getClanNameFromPath();
+            if (clanName) {
+                await openClan(clanName, false);
+                return;
+            }
+
+            const legacyClanId = Number(new URLSearchParams(location.search).get('id'));
+            if (Number.isInteger(legacyClanId) && legacyClanId > 0) {
+                await ensureClanIndex();
+                const clan = findClan(legacyClanId);
+                if (clan) {
+                    setClanPath(clan.name, { replace: true });
+                    await openClan(clan.name, false);
+                    return;
+                }
+            }
+
+            if (window.location.pathname !== '/clans') setClanPath(null, { replace: true });
+            await loadClanIndex();
+        })();
+    </script>
+</body>
+</html>

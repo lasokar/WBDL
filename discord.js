@@ -1,7 +1,10 @@
 const { randomBytes } = require('crypto');
 const rateLimit = require('express-rate-limit');
+const fs = require('fs');
+const path = require('path');
 
 const API = 'https://discord.com/api/v10';
+const BADGE_CONFIG_PATH = path.join(__dirname, 'badges.json');
 
 const syncLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -47,6 +50,75 @@ module.exports = function registerDiscord(app, pool) {
         }
         return null;
     };
+
+    function loadCommunityBadge() {
+        try {
+            const parsed = JSON.parse(fs.readFileSync(BADGE_CONFIG_PATH, 'utf8'));
+            const group = (Array.isArray(parsed.groups) ? parsed.groups : [])
+                .find(item => String(item?.id || '') === 'community-member');
+            const tier = (Array.isArray(group?.tiers) ? group.tiers : [])
+                .find(item => Number(item?.id) === 1);
+
+            if (group?.requirement?.type !== 'discord_guild_member' || !tier) {
+                return null;
+            }
+
+            return { group, tier };
+        } catch (err) {
+            console.error('Community badge config load error:', err);
+            return null;
+        }
+    }
+
+    async function grantCommunityBadge(userId) {
+        const configured = loadCommunityBadge();
+        if (!configured || !Number.isInteger(Number(userId))) return false;
+
+        const { group, tier } = configured;
+        const tierId = Number(tier.id);
+        const badgeEntry = {
+            groupId: String(group.id),
+            tierId,
+            listType: 'global',
+            unlockedAt: new Date().toISOString(),
+            metadata: {
+                discordGuildMember: true,
+            },
+        };
+
+        const inserted = await pool.query(`
+            UPDATE users
+            SET badges = COALESCE(badges, '[]'::jsonb) || $2::jsonb
+            WHERE id = $1
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements(COALESCE(badges, '[]'::jsonb)) AS stored(entry)
+                  WHERE stored.entry->>'groupId' = $3
+                    AND stored.entry->>'tierId' = $4
+                    AND COALESCE(stored.entry->>'listType', 'primary') = 'global'
+              )
+            RETURNING id
+        `, [
+            Number(userId),
+            JSON.stringify([badgeEntry]),
+            String(group.id),
+            String(tierId),
+        ]);
+
+        if (!inserted.rows.length) return false;
+
+        await pool.query(`
+            INSERT INTO notifications
+                (user_id, actor_id, record_id, type, reason, list_type, subject, body, sender_name, is_read)
+            VALUES ($1, NULL, NULL, 'badge_unlocked', NULL, 'primary', $2, $3, 'WBDL', FALSE)
+        `, [
+            Number(userId),
+            'New Badge Unlocked!',
+            `You unlocked **${tier.name || 'Community Member'}**.\n\n${tier.description || ''}`,
+        ]);
+
+        return true;
+    }
 
     async function discordFetch(url, options = {}, retries = 4) {
         const res = await fetch(url, options);
@@ -140,10 +212,14 @@ module.exports = function registerDiscord(app, pool) {
 
         let linked;
         if (onlyDiscordId) {
-            linked = [{ discord_id: String(onlyDiscordId) }];
+            const { rows } = await pool.query(
+                'SELECT id, discord_id FROM users WHERE discord_id = $1::varchar',
+                [String(onlyDiscordId)]
+            );
+            linked = rows;
         } else {
             const { rows } = await pool.query(
-                'SELECT discord_id FROM users WHERE discord_id IS NOT NULL'
+                'SELECT id, discord_id FROM users WHERE discord_id IS NOT NULL'
             );
             linked = rows;
         }
@@ -154,7 +230,10 @@ module.exports = function registerDiscord(app, pool) {
             const desired = roleForRank(rankMap.get(discordId) || null);
             try {
                 const status = await reconcileMember(discordId, desired);
-                if (status === 'ok') summary.updated++;
+                if (status === 'ok') {
+                    summary.updated++;
+                    await grantCommunityBadge(Number(u.id));
+                }
                 else if (status === 'not_in_guild') summary.skipped++;
                 else summary.errors++;
             } catch (err) {
@@ -257,7 +336,11 @@ module.exports = function registerDiscord(app, pool) {
                 [discordId, discordUsername, userId]
             );
 
-            syncRoles(discordId).catch((e) => console.error('post-link sync', e));
+            try {
+                await syncRoles(discordId);
+            } catch (syncErr) {
+                console.error('post-link sync', syncErr);
+            }
 
             res.redirect('/account-settings?discord=linked');
         } catch (err) {

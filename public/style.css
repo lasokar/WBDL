@@ -154,18 +154,21 @@ body.impossible-list #noti-badge {
     position: absolute;
     top: -6px;
     right: -6px;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0;
+    box-sizing: border-box;
     background: var(--danger);
     color: white;
+    border: 2px solid var(--bg);
     border-radius: 50%;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
-    font-size: 11px;
+    font-size: 9px;
+    line-height: 1;
     font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 2px solid var(--bg);
     z-index: 10;
     pointer-events: none;
 }

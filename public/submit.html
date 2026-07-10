@@ -9,19 +9,32 @@
 <style>
 .page-content {
     flex-grow: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 50px minmax(0, 1fr);
+    width: 100%;
+    min-height: 100%;
+    padding: 10px 10px 60px;
+    box-sizing: border-box;
+}
+
+.submit-shell {
+    position: relative;
+    grid-row: 2;
+    justify-self: center;
+    align-self: center;
+    width: 100%;
+    max-width: 480px;
 }
 
 .submit-box {
+    position: relative;
     background: var(--surface);
     padding: 38px;
     border-radius: var(--radius);
     border: 1px solid var(--border);
     width: 100%;
-    max-width: 480px;
+    box-sizing: border-box;
 }
 
 .submit-box h2 {
@@ -211,6 +224,12 @@ input:-webkit-autofill:focus {
     z-index: 1000;
 }
 
+#pending-records-modal {
+    background: rgba(0, 0, 0, 0.78);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
 .modal-box {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -338,6 +357,134 @@ input:-webkit-autofill:focus {
     white-space: nowrap;
 }
 
+.pending-settings-row {
+    grid-row: 1;
+    width: 100vw;
+    height: 50px;
+    margin-left: calc(50% - 50vw);
+    padding-right: 10px;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+}
+
+.pending-settings-btn {
+    position: static;
+    width: 50px !important;
+    height: 50px;
+    min-height: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.pending-settings-btn:hover,
+.pending-settings-btn:active,
+.pending-settings-btn:focus {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.pending-settings-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+}
+
+.pending-settings-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    pointer-events: none;
+}
+
+.pending-record-list {
+    overflow-y: auto;
+    display: grid;
+    gap: 12px;
+}
+
+.pending-record-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+}
+
+.pending-record-card h4 { margin: 0 0 12px; color: var(--text); }
+.pending-record-grid { display: grid; grid-template-columns: 110px 1fr; gap: 10px; }
+.pending-record-card label { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; }
+.pending-record-card input,
+.pending-record-card select {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius-sm);
+    padding: 9px 10px;
+    font: inherit;
+}
+.pending-record-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.pending-record-actions button {
+    flex: 0 1 120px;
+    width: auto;
+    min-height: 40px;
+    margin: 0;
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.pending-record-actions .save-pending {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+}
+
+.pending-record-actions .save-pending:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.pending-record-actions .delete-pending {
+    background: transparent;
+    border-color: rgba(255, 68, 68, 0.6);
+    color: #ff6b6b;
+}
+
+.pending-record-actions .delete-pending:hover {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: #fff;
+}
+
+@media (max-width: 560px) {
+    .submit-box { padding: 34px 22px 28px; }
+    .pending-record-grid { grid-template-columns: 1fr; }
+}
+
 </style>
 </head>
 <body>
@@ -345,7 +492,13 @@ input:-webkit-autofill:focus {
     <div id="global-nav"></div>
 
 <main class="page-content">
-    <div class="submit-box">
+    <div class="pending-settings-row">
+        <button type="button" class="pending-settings-btn" onclick="openPendingRecords()" aria-label="Edit pending records" title="Edit pending records">
+            <img src="/assets/settings-uhd.png" alt="">
+        </button>
+    </div>
+    <div class="submit-shell">
+        <div class="submit-box">
         <div class="tabs">
             <div class="tab active" id="tab-progress" onclick="switchTab('progress')">Level Progress</div>
             <div class="tab" id="tab-verif" onclick="switchTab('verif')">Verification</div>
@@ -370,7 +523,23 @@ input:-webkit-autofill:focus {
             </div>
             <div class="form-group">
                 <label for="percentage">Percentage</label>
-                <input type="number" id="percentage" placeholder="e.g. 50" min="1" max="100">
+                <input type="number" id="percentage" placeholder="e.g. 50" min="1" max="100" oninput="clampPercentageInput(this); updateEnjoymentVisibility()">
+            </div>
+            <div class="form-group hidden" id="enjoyment-group">
+                <label for="enjoyment-rating">Enjoyment rating (optional)</label>
+                <select id="enjoyment-rating">
+                    <option value="">Not rated</option>
+                    <option value="1">1 / 10</option>
+                    <option value="2">2 / 10</option>
+                    <option value="3">3 / 10</option>
+                    <option value="4">4 / 10</option>
+                    <option value="5">5 / 10</option>
+                    <option value="6">6 / 10</option>
+                    <option value="7">7 / 10</option>
+                    <option value="8">8 / 10</option>
+                    <option value="9">9 / 10</option>
+                    <option value="10">10 / 10</option>
+                </select>
             </div>
         </div>
 
@@ -400,6 +569,7 @@ input:-webkit-autofill:focus {
         </div>
 
         <button onclick="handleFormSubmit()">Submit</button>
+        </div>
     </div>
 </main>
 
@@ -413,6 +583,18 @@ input:-webkit-autofill:focus {
             <input type="text" id="modal-search" placeholder="Type level name or position..." oninput="filterModalLevels()">
         </div>
         <div id="modal-level-list" class="modal-level-list"></div>
+    </div>
+</div>
+
+<div id="pending-records-modal" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width: 680px;">
+        <div class="modal-header">
+            <h3>Your Pending Records</h3>
+            <button class="modal-close-btn" onclick="closePendingRecords()">&times;</button>
+        </div>
+        <div id="pending-record-list" class="pending-record-list">
+            <p style="color: var(--text-muted);">Loading...</p>
+        </div>
     </div>
 </div>
 
@@ -467,6 +649,7 @@ input:-webkit-autofill:focus {
         }
         
         updateUrlLabel();
+        updateEnjoymentVisibility();
     }
 
     async function checkAccess() {
@@ -582,16 +765,20 @@ input:-webkit-autofill:focus {
             return alert(`This level requires at least ${selectedDemon.requirement}% for a record!`);
         }
 
+        const enjoymentRating = percentage === 100
+            ? document.getElementById('enjoyment-rating').value
+            : '';
+
         const res = await fetch('/api/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ demonId, percentage, videoUrl })
+            body: JSON.stringify({ demonId, percentage, videoUrl, enjoymentRating })
         });
 
         const data = await res.json();
         if (res.ok) {
             alert("Record submitted for review! It will appear on the list once a list moderator approves it.");
-            window.location.href = "/";
+            window.location.reload();
         } else {
             alert(data.error || "Submission failed.");
         }
@@ -620,7 +807,7 @@ input:-webkit-autofill:focus {
         const data = await res.json();
         if (res.ok) {
             alert("Submitted for review! The level will be added on the list once a list admin approves it.");
-            window.location.href = "/";
+            window.location.reload();
         } else {
             alert(data.error || "Submission failed.");
         }
@@ -644,13 +831,127 @@ input:-webkit-autofill:focus {
             percentInput.style.cursor = "text";
             if (percentInput.value == 100) percentInput.value = ""; 
         }
+        updateEnjoymentVisibility();
+    }
+
+    function clampPercentageInput(input) {
+        if (input.value === '') return;
+        const value = Number(input.value);
+        if (Number.isFinite(value) && value > 100) input.value = '100';
+    }
+
+    function updateEnjoymentVisibility() {
+        const group = document.getElementById('enjoyment-group');
+        const select = document.getElementById('enjoyment-rating');
+        const percentage = parseInt(document.getElementById('percentage').value, 10);
+        const show = currentTab === 'progress' && percentage === 100;
+        group.classList.toggle('hidden', !show);
+        if (!show) select.value = '';
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function closePendingRecords() {
+        document.getElementById('pending-records-modal').classList.add('hidden');
+    }
+
+    async function openPendingRecords() {
+        const modal = document.getElementById('pending-records-modal');
+        const list = document.getElementById('pending-record-list');
+        modal.classList.remove('hidden');
+        list.innerHTML = '<p style="color: var(--text-muted);">Loading...</p>';
+
+        try {
+            const res = await fetch('/api/records/pending');
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Could not load pending records.');
+            renderPendingRecords(data);
+        } catch (err) {
+            list.innerHTML = `<p style="color: var(--danger);">${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    function renderPendingRecords(records) {
+        const list = document.getElementById('pending-record-list');
+        if (!Array.isArray(records) || !records.length) {
+            list.innerHTML = '<p style="color: var(--text-muted);">You have no records awaiting moderator review.</p>';
+            return;
+        }
+
+        list.innerHTML = records.map(record => {
+            const ratingOptions = ['<option value="">Not rated</option>']
+                .concat(Array.from({ length: 10 }, (_, i) => {
+                    const value = i + 1;
+                    return `<option value="${value}" ${Number(record.enjoyment_rating) === value ? 'selected' : ''}>${value} / 10</option>`;
+                })).join('');
+            const showRating = Number(record.percentage) === 100;
+
+            return `
+                <div class="pending-record-card" id="pending-card-${record.id}">
+                    <h4>#${escapeHtml(record.position)} - ${escapeHtml(record.demon_name)}</h4>
+                    <div class="pending-record-grid">
+                        <label for="pending-percent-${record.id}">Percentage</label>
+                        <input id="pending-percent-${record.id}" type="number" min="1" max="100" value="${escapeHtml(record.percentage)}" oninput="clampPercentageInput(this); updatePendingEnjoymentVisibility(${record.id})">
+                        <label for="pending-url-${record.id}">Video URL</label>
+                        <input id="pending-url-${record.id}" type="url" value="${escapeHtml(record.video_url)}">
+                        <label id="pending-rating-label-${record.id}" for="pending-rating-${record.id}" class="${showRating ? '' : 'hidden'}">Enjoyment</label>
+                        <select id="pending-rating-${record.id}" class="${showRating ? '' : 'hidden'}">${ratingOptions}</select>
+                    </div>
+                    <div class="pending-record-actions">
+                        <button type="button" class="save-pending" onclick="savePendingRecord(${record.id})">Save</button>
+                        <button type="button" class="delete-pending" onclick="deletePendingRecord(${record.id})">Cancel</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function updatePendingEnjoymentVisibility(recordId) {
+        const percentage = parseInt(document.getElementById(`pending-percent-${recordId}`).value, 10);
+        const label = document.getElementById(`pending-rating-label-${recordId}`);
+        const select = document.getElementById(`pending-rating-${recordId}`);
+        const show = percentage === 100;
+        label.classList.toggle('hidden', !show);
+        select.classList.toggle('hidden', !show);
+        if (!show) select.value = '';
+    }
+
+    async function savePendingRecord(recordId) {
+        const percentage = parseInt(document.getElementById(`pending-percent-${recordId}`).value, 10);
+        const videoUrl = document.getElementById(`pending-url-${recordId}`).value.trim();
+        const enjoymentRating = percentage === 100
+            ? document.getElementById(`pending-rating-${recordId}`).value
+            : '';
+        const res = await fetch(`/api/records/pending/${recordId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ percentage, videoUrl, enjoymentRating })
+        });
+        const data = await res.json();
+        alert(res.ok ? data.message : (data.error || 'Could not update record.'));
+        if (res.ok) openPendingRecords();
+    }
+
+    async function deletePendingRecord(recordId) {
+        if (!confirm('Canel this submission?')) return;
+        const res = await fetch(`/api/records/pending/${recordId}`, { method: 'DELETE' });
+        const data = await res.json();
+        alert(res.ok ? data.message : (data.error || 'Could not cancel record.'));
+        if (res.ok) openPendingRecords();
     }
 
     window.onclick = function(event) {
-        const overlay = document.getElementById('level-modal');
-        if (event.target === overlay) {
-            closeLevelModal();
-        }
+        const levelOverlay = document.getElementById('level-modal');
+        const pendingOverlay = document.getElementById('pending-records-modal');
+        if (event.target === levelOverlay) closeLevelModal();
+        if (event.target === pendingOverlay) closePendingRecords();
     }
 
     checkAccess();
