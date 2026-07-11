@@ -450,6 +450,89 @@ async function createInboxNotification(db, {
     `, [userId, actorId, recordId, type, reason, listType, subject, body, senderName]);
 }
 
+
+async function notifySubmissionSubscribers({
+    recordId,
+    submitterId,
+    demonId,
+    percentage,
+    videoUrl,
+    enjoymentRating = null,
+    listType = 'primary',
+    isUpdate = false,
+}) {
+    try {
+        const detailsResult = await pool.query(`
+            SELECT
+                u.username,
+                COALESCE(NULLIF(u.display_name, ''), u.username) AS submitter_name,
+                d.name AS demon_name,
+                d.position
+            FROM users u
+            CROSS JOIN demons d
+            WHERE u.id = $1 AND d.id = $2
+        `, [submitterId, demonId]);
+        const details = detailsResult.rows[0];
+        if (!details) return;
+
+        const actionLabel = isUpdate ? 'updated a record submission' : 'submitted a new record';
+        const subject = `${isUpdate ? 'Updated' : 'New'} record submission: ${details.demon_name}`;
+        const enjoymentLine = enjoymentRating == null ? '' : `
+
+**Enjoyment:** ${enjoymentRating}/10`;
+        const body = `**${details.submitter_name}** ${actionLabel} for **${details.demon_name}** at **${percentage}%**.${enjoymentLine}`;
+
+        await pool.query(`
+            INSERT INTO notifications
+                (user_id, actor_id, record_id, type, reason, list_type, subject, body, sender_name, is_read)
+            SELECT
+                recipient.id,
+                $1,
+                $2,
+                'record_submission',
+                NULL,
+                $3,
+                $4,
+                $5,
+                $6,
+                FALSE
+            FROM users recipient
+            WHERE LOWER(COALESCE(recipient.role, '')) IN ('moderator', 'admin', 'owner')
+              AND COALESCE(recipient.submission_notifications, FALSE) = TRUE
+              AND recipient.id <> $7::integer
+        `, [submitterId, recordId, listType, subject, body, details.submitter_name, submitterId]);
+
+        const discordRecipients = await pool.query(`
+            SELECT discord_id
+            FROM users
+            WHERE LOWER(COALESCE(role, '')) IN ('moderator', 'admin', 'owner')
+              AND COALESCE(submission_notifications, FALSE) = TRUE
+              AND COALESCE(submission_discord_ping, FALSE) = TRUE
+              AND discord_id IS NOT NULL
+              AND id <> $1::integer
+        `, [submitterId]);
+
+        const sendDiscordNotification = app.locals.sendDiscordSubmissionNotification;
+        if (typeof sendDiscordNotification === 'function' && discordRecipients.rows.length) {
+            sendDiscordNotification({
+                discordIds: discordRecipients.rows.map(row => String(row.discord_id)),
+                submitterName: details.submitter_name,
+                demonName: details.demon_name,
+                position: Number(details.position),
+                percentage: Number(percentage),
+                videoUrl,
+                enjoymentRating,
+                listType,
+                isUpdate,
+            }).catch(err => {
+                console.error('Discord submission notification error:', err);
+            });
+        }
+    } catch (err) {
+        console.error('Submission subscriber notification error:', err);
+    }
+}
+
 async function getCurrentLeaderboardLeader(db, list) {
     const result = await db.query(`
         WITH PlayerStats AS (
@@ -1326,7 +1409,7 @@ app.post('/api/submit', async (req, res) => {
 
     try {
         const demonQuery = await pool.query(
-            'SELECT position, requirement, list_type FROM demons WHERE id = $1', 
+            'SELECT position, requirement, list_type, name FROM demons WHERE id = $1',
             [demonId]
         );
         
@@ -1371,12 +1454,23 @@ app.post('/api/submit', async (req, res) => {
                 });
             }
 
+            const updatedRecordId = Number(existingRecord.rows[0].id);
             await pool.query(
-                `UPDATE records 
-                 SET percentage = $1, video_url = $2, enjoyment_rating = $3, status = 'pending' 
+                `UPDATE records
+                 SET percentage = $1, video_url = $2, enjoyment_rating = $3, status = 'pending'
                  WHERE id = $4`,
-                [newPercent, videoUrl, normalizedEnjoyment, existingRecord.rows[0].id]
+                [newPercent, videoUrl, normalizedEnjoyment, updatedRecordId]
             );
+            await notifySubmissionSubscribers({
+                recordId: updatedRecordId,
+                submitterId: req.session.userId,
+                demonId,
+                percentage: newPercent,
+                videoUrl,
+                enjoymentRating: normalizedEnjoyment,
+                listType: list,
+                isUpdate: true,
+            });
             const leaderboardSync = await syncLeaderboardTopOne(list);
             for (const changedUserId of leaderboardSync.changedUserIds || []) {
                 await evaluateUserBadges(changedUserId, list);
@@ -1384,12 +1478,23 @@ app.post('/api/submit', async (req, res) => {
             return res.json({ message: "Record updated and awaiting review!" });
         }
 
-        await pool.query(
+        const insertedRecord = await pool.query(
             `INSERT INTO records (user_id, demon_id, percentage, video_url, enjoyment_rating, list_type, status)
-             VALUES ($1, $2, $3, $4, $5, $6, 'pending')`,
+             VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+             RETURNING id`,
             [req.session.userId, demonId, newPercent, videoUrl, normalizedEnjoyment, list]
         );
-        
+        await notifySubmissionSubscribers({
+            recordId: Number(insertedRecord.rows[0].id),
+            submitterId: req.session.userId,
+            demonId,
+            percentage: newPercent,
+            videoUrl,
+            enjoymentRating: normalizedEnjoyment,
+            listType: list,
+            isUpdate: false,
+        });
+
         res.json({ message: "Record submitted successfully!" });
     } catch (err) {
         console.error(err);
@@ -1483,10 +1588,10 @@ app.delete('/api/records/pending/:recordId', async (req, res) => {
             RETURNING id
         `, [recordId, req.session.userId, list]);
         if (!result.rows.length) return res.status(404).json({ error: "Pending record not found." });
-        res.json({ message: "Pending record deleted." });
+        res.json({ message: "Record canceled." });
     } catch (err) {
         console.error('Pending record delete error:', err);
-        res.status(500).json({ error: "Could not delete pending record." });
+        res.status(500).json({ error: "Could not cancel record." });
     }
 });
 
@@ -2008,6 +2113,68 @@ app.delete('/api/admin/users/:userId/records/:recordId', isAdmin, async (req, re
     } catch (err) {
         console.error('Admin record delete error:', err);
         res.status(500).json({ error: "Could not delete record." });
+    }
+});
+
+app.get('/api/moderation/submission-notification-settings', isMod, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                COALESCE(submission_notifications, FALSE) AS submission_notifications,
+                COALESCE(submission_discord_ping, FALSE) AS submission_discord_ping,
+                discord_id IS NOT NULL AS discord_linked
+            FROM users
+            WHERE id = $1
+        `, [req.session.userId]);
+        const settings = result.rows[0];
+        if (!settings) return res.status(404).json({ error: 'User not found.' });
+
+        res.json({
+            submissionNotifications: Boolean(settings.submission_notifications),
+            discordPing: Boolean(settings.submission_discord_ping),
+            discordLinked: Boolean(settings.discord_linked),
+        });
+    } catch (err) {
+        console.error('Submission notification settings load error:', err);
+        res.status(500).json({ error: 'Could not load notification settings.' });
+    }
+});
+
+app.patch('/api/moderation/submission-notification-settings', isMod, async (req, res) => {
+    const { submissionNotifications, discordPing } = req.body;
+    if (typeof submissionNotifications !== 'boolean' || typeof discordPing !== 'boolean') {
+        return res.status(400).json({ error: 'Notification settings must be true or false.' });
+    }
+    if (discordPing && !submissionNotifications) {
+        return res.status(400).json({ error: 'Submission Notifications must be enabled before Discord Ping.' });
+    }
+
+    try {
+        const userResult = await pool.query(
+            'SELECT discord_id FROM users WHERE id = $1',
+            [req.session.userId]
+        );
+        const user = userResult.rows[0];
+        if (!user) return res.status(404).json({ error: 'User not found.' });
+        if (discordPing && !user.discord_id) {
+            return res.status(400).json({ error: 'Link your Discord account before enabling Discord Ping.' });
+        }
+
+        await pool.query(`
+            UPDATE users
+            SET submission_notifications = $1,
+                submission_discord_ping = $2
+            WHERE id = $3
+        `, [submissionNotifications, submissionNotifications && discordPing, req.session.userId]);
+
+        res.json({
+            submissionNotifications,
+            discordPing: submissionNotifications && discordPing,
+            discordLinked: Boolean(user.discord_id),
+        });
+    } catch (err) {
+        console.error('Submission notification settings update error:', err);
+        res.status(500).json({ error: 'Could not update notification settings.' });
     }
 });
 

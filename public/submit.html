@@ -904,7 +904,7 @@ input:-webkit-autofill:focus {
     function renderPendingRecords(records) {
         const list = document.getElementById('pending-record-list');
         if (!Array.isArray(records) || !records.length) {
-            list.innerHTML = '<p style="color: var(--text-muted);">You have no records awaiting moderator review.</p>';
+            list.innerHTML = '<p style="color: var(--text-muted);">You have no records awaiting review.</p>';
             return;
         }
 
@@ -963,7 +963,7 @@ input:-webkit-autofill:focus {
     }
 
     async function deletePendingRecord(recordId) {
-        if (!confirm('Canel this submission?')) return;
+        if (!confirm('Cancel this submission?')) return;
         const res = await fetch(`/api/records/pending/${recordId}`, { method: 'DELETE' });
         const data = await res.json();
         alert(res.ok ? data.message : (data.error || 'Could not cancel record.'));

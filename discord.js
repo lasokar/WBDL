@@ -254,6 +254,73 @@ module.exports = function registerDiscord(app, pool) {
         }
     }
 
+    function escapeDiscordText(value) {
+        return String(value ?? '').replace(/([\`*_{}\[\]()#+\-.!|>~])/g, '\$1');
+    }
+
+    async function sendDirectMessage(discordId, content) {
+        const c = cfg();
+        if (!c.botToken) throw new Error('Discord bot token is not configured.');
+
+        const dmResponse = await discordFetch(`${API}/users/@me/channels`, {
+            method: 'POST',
+            headers: botHeaders(),
+            body: JSON.stringify({ recipient_id: String(discordId) }),
+        });
+        if (!dmResponse.ok) {
+            throw new Error(`Could not open Discord DM channel (${dmResponse.status}).`);
+        }
+
+        const channel = await dmResponse.json();
+        const messageResponse = await discordFetch(`${API}/channels/${channel.id}/messages`, {
+            method: 'POST',
+            headers: botHeaders(),
+            body: JSON.stringify({
+                content: String(content).slice(0, 2000),
+                allowed_mentions: { users: [String(discordId)] },
+            }),
+        });
+        if (!messageResponse.ok) {
+            throw new Error(`Could not send Discord DM (${messageResponse.status}).`);
+        }
+    }
+
+    app.locals.sendDiscordSubmissionNotification = async ({
+        discordIds = [],
+        submitterName,
+        demonName,
+        position,
+        percentage,
+        videoUrl,
+        enjoymentRating = null,
+        isUpdate = false,
+    }) => {
+        if (!cfg().botToken) {
+            console.warn('Discord submission notification skipped: bot token is not configured.');
+            return;
+        }
+
+        const uniqueDiscordIds = [...new Set(discordIds.map(String).filter(Boolean))];
+        const title = isUpdate ? 'Updated WBDL record submission' : 'New WBDL record submission';
+        const placement = Number.isFinite(Number(position)) ? ` (#${Number(position)})` : '';
+        const enjoymentLine = enjoymentRating == null ? '' : `
+**Enjoyment:** ${Number(enjoymentRating)}/10`;
+
+        for (const discordId of uniqueDiscordIds) {
+            const content = `<@${discordId}> **${title}**
+**Player:** ${escapeDiscordText(submitterName)}
+**Level:** ${escapeDiscordText(demonName)}${placement}
+**Progress:** ${Number(percentage)}%${enjoymentLine}
+**Video:** ${videoUrl}`;
+            try {
+                await sendDirectMessage(discordId, content);
+            } catch (err) {
+                console.error(`Discord submission DM failed for ${discordId}:`, err.message);
+            }
+            await sleep(150);
+        }
+    };
+
     app.get('/api/discord/link', (req, res) => {
         if (!req.session.userId) return res.redirect('/login.html');
         if (!isConfigured()) return res.status(503).send('Discord integration is not configured.');
@@ -383,7 +450,12 @@ module.exports = function registerDiscord(app, pool) {
             );
             const discordId = rows[0] && rows[0].discord_id;
             await pool.query(
-                'UPDATE users SET discord_id = NULL, discord_username = NULL, social_discord = NULL WHERE id = $1::integer',
+                `UPDATE users
+                 SET discord_id = NULL,
+                     discord_username = NULL,
+                     social_discord = NULL,
+                     submission_discord_ping = FALSE
+                 WHERE id = $1::integer`,
                 [userId]
             );
             if (discordId) clearRoles(discordId).catch(() => {});

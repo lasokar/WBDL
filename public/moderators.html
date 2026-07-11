@@ -16,12 +16,13 @@
 
     h2 {
         border-bottom: 1px solid var(--border);
-        padding-bottom: 16px;
-        margin-bottom: 22px;
+        padding: 0 60px 16px 0;
+        margin: 0 0 22px;
         font-size: 1.5em;
     }
 
     .box {
+        position: relative;
         background: var(--surface);
         padding: 26px;
         border-radius: var(--radius);
@@ -80,19 +81,316 @@
         margin-top: 6px;
     }
     .video-link:hover { color: var(--accent); }
+
+
+    .moderator-options-btn {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 50px;
+        height: 50px;
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        appearance: none;
+        -webkit-appearance: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .moderator-options-btn:hover,
+    .moderator-options-btn:active,
+    .moderator-options-btn:focus {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .moderator-options-btn:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+    }
+
+    .moderator-options-btn img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        pointer-events: none;
+    }
+
+    .notification-options-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.78);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 20px;
+        box-sizing: border-box;
+    }
+
+    .notification-options-overlay.hidden {
+        display: none;
+    }
+
+    .notification-options-box {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        width: 90%;
+        max-width: 440px;
+        padding: 24px;
+        box-sizing: border-box;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    .notification-options-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 18px;
+    }
+
+    .notification-options-header h3 {
+        margin: 0;
+        font-size: 1.2em;
+        color: var(--text);
+    }
+
+    .notification-options-close {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 1.4em;
+        cursor: pointer;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .notification-options-close:hover {
+        color: #ff4444;
+    }
+
+    .notification-settings {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .notification-toggle {
+        width: auto;
+        min-height: 28px;
+        padding: 0;
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        background: transparent;
+        color: var(--text);
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 7px;
+        font-family: var(--font-body);
+        font-weight: 900;
+        line-height: 1;
+        box-shadow: none;
+    }
+
+    .notification-toggle:hover,
+    .notification-toggle:focus,
+    .notification-toggle:active {
+        background: transparent;
+    }
+
+    .notification-toggle img {
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        min-height: 28px;
+        max-width: 28px;
+        max-height: 28px;
+        object-fit: contain;
+        image-rendering: auto;
+        pointer-events: none;
+        display: block;
+        flex: 0 0 28px;
+        transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .notification-toggle:active img {
+        transform: scale(1.1);
+        transition: transform 0.08s ease-out;
+    }
+
+    .notification-toggle span {
+        pointer-events: none;
+        user-select: none;
+    }
+
+    .notification-settings-message {
+        min-height: 1.2em;
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        margin-left: 35px;
+    }
 </style>
 </head>
 <body>
     <div id="global-nav"></div>
     <main class="page-content">
         <section class="box">
+            <button type="button" class="moderator-options-btn" onclick="openNotificationOptions()" aria-label="Submission notification options" title="Options">
+                <img src="/assets/settings-uhd.png" alt="">
+            </button>
             <h2>Pending Submissions</h2>
             <div id="pending-records">Checking for new records...</div>
         </section>
     </main>
 
+    <div id="notification-options-modal" class="notification-options-overlay hidden" aria-hidden="true">
+        <div class="notification-options-box" role="dialog" aria-modal="true" aria-labelledby="notification-options-title">
+            <div class="notification-options-header">
+                <h3 id="notification-options-title">Options</h3>
+                <button type="button" class="notification-options-close" onclick="closeNotificationOptions()" aria-label="Close">&times;</button>
+            </div>
+            <div class="notification-settings" aria-label="Submission notification settings">
+                <button type="button" id="submission-notifications-toggle" class="notification-toggle" onclick="toggleSubmissionNotifications()" aria-pressed="false">
+                    <img id="submission-notifications-image" src="/assets/GJ_checkOff_001.png" alt="Submission Notifications off">
+                    <span>Submission Notifications</span>
+                </button>
+                <button type="button" id="discord-ping-toggle" class="notification-toggle" onclick="toggleDiscordPing()" aria-pressed="false" hidden>
+                    <img id="discord-ping-image" src="/assets/GJ_checkOff_001.png" alt="Discord Ping off">
+                    <span>Discord Ping</span>
+                </button>
+                <div id="notification-settings-message" class="notification-settings-message" aria-live="polite"></div>
+            </div>
+        </div>
+    </div>
+
     <script src="/nav.js"></script>
     <script>
+        const notificationSettings = {
+            submissionNotifications: false,
+            discordPing: false,
+            discordLinked: false,
+            saving: false,
+        };
+
+        function openNotificationOptions() {
+            const modal = document.getElementById('notification-options-modal');
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeNotificationOptions() {
+            const modal = document.getElementById('notification-options-modal');
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
+        function updateCheckbox(buttonId, imageId, enabled, label) {
+            const button = document.getElementById(buttonId);
+            const image = document.getElementById(imageId);
+            button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+            image.src = enabled ? '/assets/GJ_checkOn_001.png' : '/assets/GJ_checkOff_001.png';
+            image.alt = `${label} ${enabled ? 'on' : 'off'}`;
+        }
+
+        function renderNotificationSettings() {
+            updateCheckbox(
+                'submission-notifications-toggle',
+                'submission-notifications-image',
+                notificationSettings.submissionNotifications,
+                'Submission Notifications'
+            );
+            updateCheckbox(
+                'discord-ping-toggle',
+                'discord-ping-image',
+                notificationSettings.discordPing,
+                'Discord Ping'
+            );
+
+            const discordToggle = document.getElementById('discord-ping-toggle');
+            discordToggle.hidden = !(notificationSettings.submissionNotifications && notificationSettings.discordLinked);
+            document.getElementById('submission-notifications-toggle').disabled = notificationSettings.saving;
+            discordToggle.disabled = notificationSettings.saving;
+        }
+
+        async function loadNotificationSettings() {
+            try {
+                const response = await fetch('/api/moderation/submission-notification-settings');
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Could not load notification settings.');
+
+                notificationSettings.submissionNotifications = Boolean(data.submissionNotifications);
+                notificationSettings.discordPing = Boolean(data.discordPing);
+                notificationSettings.discordLinked = Boolean(data.discordLinked);
+                renderNotificationSettings();
+            } catch (err) {
+                document.getElementById('notification-settings-message').textContent = err.message;
+            }
+        }
+
+        async function saveNotificationSettings(previous) {
+            notificationSettings.saving = true;
+            renderNotificationSettings();
+            const message = document.getElementById('notification-settings-message');
+            message.textContent = '';
+
+            try {
+                const response = await fetch('/api/moderation/submission-notification-settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        submissionNotifications: notificationSettings.submissionNotifications,
+                        discordPing: notificationSettings.discordPing,
+                    }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Could not save notification settings.');
+
+                notificationSettings.submissionNotifications = Boolean(data.submissionNotifications);
+                notificationSettings.discordPing = Boolean(data.discordPing);
+                notificationSettings.discordLinked = Boolean(data.discordLinked);
+                message.textContent = 'Saved';
+                window.setTimeout(() => {
+                    if (message.textContent === 'Saved') message.textContent = '';
+                }, 1400);
+            } catch (err) {
+                Object.assign(notificationSettings, previous);
+                message.textContent = err.message;
+            } finally {
+                notificationSettings.saving = false;
+                renderNotificationSettings();
+            }
+        }
+
+        function toggleSubmissionNotifications() {
+            if (notificationSettings.saving) return;
+            const previous = { ...notificationSettings };
+            notificationSettings.submissionNotifications = !notificationSettings.submissionNotifications;
+            if (!notificationSettings.submissionNotifications) notificationSettings.discordPing = false;
+            renderNotificationSettings();
+            saveNotificationSettings(previous);
+        }
+
+        function toggleDiscordPing() {
+            if (notificationSettings.saving || !notificationSettings.submissionNotifications || !notificationSettings.discordLinked) return;
+            const previous = { ...notificationSettings };
+            notificationSettings.discordPing = !notificationSettings.discordPing;
+            renderNotificationSettings();
+            saveNotificationSettings(previous);
+        }
+
         async function loadPending() {
             const res = await fetch('/api/admin/pending');
             if (!res.ok) {
@@ -149,6 +447,15 @@ async function updateStatus(recordId, status) {
         alert("A network error occurred. Check console for details.");
     }
 }
+        document.getElementById('notification-options-modal').addEventListener('click', event => {
+            if (event.target === event.currentTarget) closeNotificationOptions();
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeNotificationOptions();
+        });
+
+        loadNotificationSettings();
         loadPending();
     </script>
 </body>
