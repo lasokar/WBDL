@@ -506,7 +506,6 @@ async function notifySubmissionSubscribers({
             SELECT discord_id
             FROM users
             WHERE LOWER(COALESCE(role, '')) IN ('moderator', 'admin', 'owner')
-              AND COALESCE(submission_notifications, FALSE) = TRUE
               AND COALESCE(submission_discord_ping, FALSE) = TRUE
               AND discord_id IS NOT NULL
               AND id <> $1::integer
@@ -1588,10 +1587,10 @@ app.delete('/api/records/pending/:recordId', async (req, res) => {
             RETURNING id
         `, [recordId, req.session.userId, list]);
         if (!result.rows.length) return res.status(404).json({ error: "Pending record not found." });
-        res.json({ message: "Record canceled." });
+        res.json({ message: "Pending record deleted." });
     } catch (err) {
         console.error('Pending record delete error:', err);
-        res.status(500).json({ error: "Could not cancel record." });
+        res.status(500).json({ error: "Could not delete pending record." });
     }
 });
 
@@ -2145,10 +2144,6 @@ app.patch('/api/moderation/submission-notification-settings', isMod, async (req,
     if (typeof submissionNotifications !== 'boolean' || typeof discordPing !== 'boolean') {
         return res.status(400).json({ error: 'Notification settings must be true or false.' });
     }
-    if (discordPing && !submissionNotifications) {
-        return res.status(400).json({ error: 'Submission Notifications must be enabled before Discord Ping.' });
-    }
-
     try {
         const userResult = await pool.query(
             'SELECT discord_id FROM users WHERE id = $1',
@@ -2165,11 +2160,11 @@ app.patch('/api/moderation/submission-notification-settings', isMod, async (req,
             SET submission_notifications = $1,
                 submission_discord_ping = $2
             WHERE id = $3
-        `, [submissionNotifications, submissionNotifications && discordPing, req.session.userId]);
+        `, [submissionNotifications, discordPing, req.session.userId]);
 
         res.json({
             submissionNotifications,
-            discordPing: submissionNotifications && discordPing,
+            discordPing,
             discordLinked: Boolean(user.discord_id),
         });
     } catch (err) {

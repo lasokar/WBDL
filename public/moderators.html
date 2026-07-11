@@ -265,7 +265,7 @@
             <div class="notification-settings" aria-label="Submission notification settings">
                 <button type="button" id="submission-notifications-toggle" class="notification-toggle" onclick="toggleSubmissionNotifications()" aria-pressed="false">
                     <img id="submission-notifications-image" src="/assets/GJ_checkOff_001.png" alt="Submission Notifications off">
-                    <span>Submission Notifications</span>
+                    <span>Submission notifications</span>
                 </button>
                 <button type="button" id="discord-ping-toggle" class="notification-toggle" onclick="toggleDiscordPing()" aria-pressed="false" hidden>
                     <img id="discord-ping-image" src="/assets/GJ_checkOff_001.png" alt="Discord Ping off">
@@ -320,7 +320,7 @@
             );
 
             const discordToggle = document.getElementById('discord-ping-toggle');
-            discordToggle.hidden = !(notificationSettings.submissionNotifications && notificationSettings.discordLinked);
+            discordToggle.hidden = !notificationSettings.discordLinked;
             document.getElementById('submission-notifications-toggle').disabled = notificationSettings.saving;
             discordToggle.disabled = notificationSettings.saving;
         }
@@ -361,10 +361,6 @@
                 notificationSettings.submissionNotifications = Boolean(data.submissionNotifications);
                 notificationSettings.discordPing = Boolean(data.discordPing);
                 notificationSettings.discordLinked = Boolean(data.discordLinked);
-                message.textContent = 'Saved';
-                window.setTimeout(() => {
-                    if (message.textContent === 'Saved') message.textContent = '';
-                }, 1400);
             } catch (err) {
                 Object.assign(notificationSettings, previous);
                 message.textContent = err.message;
@@ -378,13 +374,12 @@
             if (notificationSettings.saving) return;
             const previous = { ...notificationSettings };
             notificationSettings.submissionNotifications = !notificationSettings.submissionNotifications;
-            if (!notificationSettings.submissionNotifications) notificationSettings.discordPing = false;
             renderNotificationSettings();
             saveNotificationSettings(previous);
         }
 
         function toggleDiscordPing() {
-            if (notificationSettings.saving || !notificationSettings.submissionNotifications || !notificationSettings.discordLinked) return;
+            if (notificationSettings.saving || !notificationSettings.discordLinked) return;
             const previous = { ...notificationSettings };
             notificationSettings.discordPing = !notificationSettings.discordPing;
             renderNotificationSettings();
