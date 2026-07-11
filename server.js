@@ -384,6 +384,11 @@ function canModerateTargetRole(actorRole, targetRole) {
     return actor === 'owner';
 }
 
+function canReviewSubmission(actorId, targetUserId, actorRole) {
+    if (!isStaffRole(actorRole)) return false;
+    return Number(actorId) !== Number(targetUserId) || String(actorRole || '').toLowerCase() === 'owner';
+}
+
 function normalizeEmail(value) {
     return String(value || '').trim().toLowerCase();
 }
@@ -2234,13 +2239,9 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
             return res.status(400).json({ error: "This record does not belong to the active list." });
         }
 
-        if (record.user_id === actorId && actor?.role !== 'owner') {
+        if (!canReviewSubmission(actorId, record.user_id, actor?.role)) {
             await client.query('ROLLBACK');
-            return res.status(403).json({ error: "You cannot verify your own record!" });
-        }
-        if (!canModerateTargetRole(actor?.role, record.target_role)) {
-            await client.query('ROLLBACK');
-            return res.status(403).json({ error: "Only the owner can moderate staff members." });
+            return res.status(403).json({ error: "You cannot review your own record." });
         }
 
         await client.query(`
@@ -2630,6 +2631,9 @@ app.post('/api/admin/reject-verification', isAdmin, async (req, res) => {
 
     try {
         await client.query('BEGIN');
+        const actorQuery = await client.query('SELECT role FROM users WHERE id = $1', [actorId]);
+        const actorRole = actorQuery.rows[0]?.role;
+
         const verifQuery = await client.query(
             'SELECT user_id, level_name, list_type FROM verifications WHERE id = $1 FOR UPDATE',
             [verifId]
@@ -2643,6 +2647,11 @@ app.post('/api/admin/reject-verification', isAdmin, async (req, res) => {
         if (list_type !== activeSubdomainList) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: "This request does not belong to the active list." });
+        }
+
+        if (!canReviewSubmission(actorId, user_id, actorRole)) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: "You cannot review your own verification." });
         }
 
         await client.query(
@@ -2702,9 +2711,9 @@ app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
             return res.status(400).json({ error: "This request does not belong to the active list." });
         }
 
-        if (verification.user_id === actorId && actorRole === 'admin') {
+        if (!canReviewSubmission(actorId, verification.user_id, actorRole)) {
             await client.query('ROLLBACK');
-            return res.status(403).json({ error: "Admins cannot approve their own level verifications!" });
+            return res.status(403).json({ error: "You cannot review your own verification." });
         }
 
         await client.query('UPDATE verifications SET status = $1 WHERE id = $2', ['accepted', verifId]);
