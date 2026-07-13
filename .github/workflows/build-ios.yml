@@ -21,7 +21,7 @@ jobs:
       - name: Init Capacitor project
         run: |
           if [ ! -f capacitor.config.json ]; then
-            npx cap init "WBDL" "org.yourname.wbdl" --web-dir public
+            npx cap init "WBDL" "lasokardih.pinkdevdih.wbdl" --web-dir public
           fi
 
       - name: Point Capacitor at live site
