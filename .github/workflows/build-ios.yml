@@ -1,0 +1,120 @@
+name: build-ios
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Capacitor
+        run: npm install @capacitor/core @capacitor/ios @capacitor/cli
+
+      - name: Init Capacitor project
+        run: |
+          if [ ! -f capacitor.config.json ]; then
+            npx cap init "WBDL" "org.yourname.wbdl" --web-dir public
+          fi
+
+      - name: Point Capacitor at live site
+        run: |
+          node -e "
+            const fs = require('fs');
+            const cfg = JSON.parse(fs.readFileSync('capacitor.config.json'));
+            cfg.server = { url: 'https://webdemonlist.org', cleartext: false };
+            fs.writeFileSync('capacitor.config.json', JSON.stringify(cfg, null, 2));
+          "
+
+      - name: Add iOS platform
+        run: |
+          if [ ! -d ios ]; then
+            npx cap add ios
+          fi
+
+      - run: npx cap sync ios
+
+      - name: Import signing identity
+        env:
+          BUILD_CERT_BASE64: ${{ secrets.BUILD_CERT_BASE64 }}
+          BUILD_CERT_PASSWORD: ${{ secrets.BUILD_CERT_PASSWORD }}
+          BUILD_PROFILE_BASE64: ${{ secrets.BUILD_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          CERT_PATH=$RUNNER_TEMP/cert.p12
+          PROFILE_PATH=$RUNNER_TEMP/profile.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$BUILD_CERT_BASE64" | base64 --decode -o $CERT_PATH
+          echo -n "$BUILD_PROFILE_BASE64" | base64 --decode -o $PROFILE_PATH
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $CERT_PATH -P "$BUILD_CERT_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH login.keychain
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Write ExportOptions.plist
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          BUNDLE_ID: org.yourname.wbdl
+          PROVISIONING_PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_NAME }}
+          EXPORT_METHOD: ad-hoc
+        run: |
+          cat > ios/App/ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>$EXPORT_METHOD</string>
+              <key>teamID</key>
+              <string>$APPLE_TEAM_ID</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>$BUNDLE_ID</key>
+                  <string>$PROVISIONING_PROFILE_NAME</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Archive
+        working-directory: ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/App.xcarchive \
+            -destination "generic/platform=iOS" \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER=${{ secrets.PROVISIONING_PROFILE_NAME }} \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            archive
+
+      - name: Export IPA
+        working-directory: ios/App
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/App.xcarchive \
+            -exportPath $RUNNER_TEMP/export \
+            -exportOptionsPlist ExportOptions.plist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wbdl-ipa
+          path: ${{ runner.temp }}/export/*.ipa
