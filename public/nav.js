@@ -1,3 +1,4 @@
+
 const TIME_MACHINE_MIN_DATE_FALLBACK = '2026-01-01';
 let timeMachineMinDateCache = null;
 let timeMachineMinDatePromise = null;
@@ -384,115 +385,19 @@ async function loadNavbar() {
                 background: var(--surface-2) !important;
                 color: var(--accent) !important;
             }
-
-            #global-nav .nav-burger {
-                display: none;
-                width: 40px;
-                height: 40px;
-                border: 1px solid var(--border);
-                background: var(--surface-2);
-                border-radius: var(--radius-sm);
-                cursor: pointer;
-                align-items: center;
-                justify-content: center;
-                flex-direction: column;
-                gap: 4px;
-                flex: 0 0 auto;
-            }
-
-            #global-nav .nav-burger span {
-                display: block;
-                width: 18px;
-                height: 2px;
-                background: var(--text);
-                border-radius: 2px;
-                transition: transform 0.15s, opacity 0.15s;
-            }
-
-            #global-nav .nav-links {
-                display: flex;
-                align-items: center;
-                gap: 28px;
-                flex-wrap: wrap;
-            }
-
-            @media (max-width: 780px) {
-                #global-nav .nav-row { padding: 12px 16px !important; }
-                #global-nav .nav-burger { display: flex !important; }
-                #global-nav .nav-links {
-                    position: fixed;
-                    top: var(--wbdl-header-height, 62px);
-                    left: 0;
-                    right: 0;
-                    flex-direction: column;
-                    align-items: flex-start;
-                    gap: 2px;
-                    background: var(--surface);
-                    border-bottom: 1px solid var(--border);
-                    padding: 8px 16px 14px;
-                    max-height: 0;
-                    overflow: hidden;
-                    transition: max-height 0.2s ease;
-                    z-index: 200;
-                }
-                #global-nav .nav-links.open {
-                    max-height: 70vh;
-                    overflow-y: auto;
-                }
-                #global-nav .nav-links a {
-                    width: 100%;
-                    padding: 12px 4px;
-                    border-bottom: 1px solid var(--border);
-                    font-size: 1.02em !important;
-                }
-                #global-nav .nav-links a:last-child { border-bottom: none; }
-            }
-
-            body.force-mobile-mode #global-nav .nav-row { padding: 12px 16px !important; }
-            body.force-mobile-mode #global-nav .nav-burger { display: flex !important; }
-            body.force-mobile-mode #global-nav .nav-links {
-                position: fixed;
-                top: var(--wbdl-header-height, 62px);
-                left: 0;
-                right: 0;
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 2px;
-                background: var(--surface);
-                border-bottom: 1px solid var(--border);
-                padding: 8px 16px 14px;
-                max-height: 0;
-                overflow: hidden;
-                transition: max-height 0.2s ease;
-                z-index: 200;
-            }
-            body.force-mobile-mode #global-nav .nav-links.open {
-                max-height: 70vh;
-                overflow-y: auto;
-            }
-            body.force-mobile-mode #global-nav .nav-links a {
-                width: 100%;
-                padding: 12px 4px;
-                border-bottom: 1px solid var(--border);
-                font-size: 1.02em !important;
-            }
-            body.force-mobile-mode #global-nav .nav-links a:last-child { border-bottom: none; }
         </style>
-        <nav class="nav-row" style="width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 14px 30px; background: var(--surface); border-bottom: 1px solid var(--border); box-sizing: border-box; position: relative;">
-            <a href="/" style="display: flex; align-items: center; gap: 11px; font-family: var(--font-display); font-size: 1.15em; letter-spacing: 0.5px; color: ${themeColor}; text-decoration: none; flex: 0 0 auto;">
-                <img src="${brandIcon}" alt="WBDL Icon" style="height: 30px; width: auto; border-radius: 6px;">
-                <span>${brandName}</span>
-            </a>
-            <div class="nav-links" id="nav-links">
+        <nav style="width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 14px 30px; background: var(--surface); border-bottom: 1px solid var(--border); box-sizing: border-box;">
+            <div style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap;">
+                <a href="/" style="display: flex; align-items: center; gap: 11px; font-family: var(--font-display); font-size: 1.15em; letter-spacing: 0.5px; color: ${themeColor}; text-decoration: none;">
+                    <img src="${brandIcon}" alt="WBDL Icon" style="height: 30px; width: auto; border-radius: 6px;">
+                    <span>${brandName}</span>
+                </a>
                 <a href="/leaderboard" style="${navLink}">Leaderboard</a>
                 <a href="/clans" style="${navLink}">Clans</a>
                 <a href="/changelog" style="${navLink}">Changelog</a>
                 <a href="javascript:openTimeMachine()" style="${navLink}">Time Machine</a>
                 ${listSwapLink}
             </div>
-            <button type="button" class="nav-burger" id="nav-burger" aria-label="Menu" onclick="toggleMobileNav()">
-                <span></span><span></span><span></span>
-            </button>
             <div id="user-nav">${userSection}</div>
         </nav>
     `;
@@ -500,57 +405,6 @@ async function loadNavbar() {
     if (user.loggedIn) {
         updateNotiBadge();
     }
-
-    initMobileModeToggle();
-}
-
-function toggleMobileNav() {
-    const links = document.getElementById('nav-links');
-    const burger = document.getElementById('nav-burger');
-    if (!links || !burger) return;
-    const open = links.classList.toggle('open');
-    burger.children[0].style.transform = open ? 'rotate(45deg) translateY(6px)' : '';
-    burger.children[1].style.opacity = open ? '0' : '1';
-    burger.children[2].style.transform = open ? 'rotate(-45deg) translateY(-6px)' : '';
-}
-
-function initMobileModeToggle() {
-    if (document.getElementById('mobile-mode-fab')) return;
-
-    const enabled = localStorage.getItem('wbdl-force-mobile') === '1';
-    if (enabled) document.body.classList.add('force-mobile-mode');
-
-    const fab = document.createElement('button');
-    fab.id = 'mobile-mode-fab';
-    fab.type = 'button';
-    fab.title = 'Toggle mobile layout preview';
-    fab.textContent = enabled ? '🖥️' : '📱';
-    fab.style.cssText = `
-        position: fixed;
-        bottom: 18px;
-        right: 18px;
-        width: 46px;
-        height: 46px;
-        border-radius: 50%;
-        border: 1px solid var(--border);
-        background: var(--surface-2);
-        color: var(--text);
-        font-size: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        z-index: 999;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.4);
-    `;
-
-    fab.onclick = () => {
-        const on = document.body.classList.toggle('force-mobile-mode');
-        localStorage.setItem('wbdl-force-mobile', on ? '1' : '0');
-        fab.textContent = on ? '🖥️' : '📱';
-    };
-
-    document.body.appendChild(fab);
 }
 
 async function logout() {
@@ -604,56 +458,6 @@ async function loadFooter() {
         </div>
     `;
 }
-
-function ensurePwaTags() {
-    const head = document.head;
-
-    if (!document.querySelector('link[rel="manifest"]')) {
-        const link = document.createElement('link');
-        link.rel = 'manifest';
-        link.href = '/manifest.json';
-        head.appendChild(link);
-    }
-
-    if (!document.querySelector('link[rel="apple-touch-icon"]')) {
-        const link = document.createElement('link');
-        link.rel = 'apple-touch-icon';
-        link.href = '/assets/icon-180.png';
-        head.appendChild(link);
-    }
-
-    const metaTags = [
-        ['apple-mobile-web-app-capable', 'yes'],
-        ['apple-mobile-web-app-status-bar-style', 'black-translucent'],
-        ['apple-mobile-web-app-title', 'WBDL'],
-        ['mobile-web-app-capable', 'yes']
-    ];
-
-    metaTags.forEach(([name, content]) => {
-        if (!document.querySelector(`meta[name="${name}"]`)) {
-            const meta = document.createElement('meta');
-            meta.name = name;
-            meta.content = content;
-            head.appendChild(meta);
-        }
-    });
-
-    if (!document.querySelector('meta[name="theme-color"]')) {
-        const meta = document.createElement('meta');
-        meta.name = 'theme-color';
-        meta.content = '#101214';
-        head.appendChild(meta);
-    }
-}
-
-function registerServiceWorker() {
-    if (!('serviceWorker' in navigator)) return;
-    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') return;
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-}
-
-ensurePwaTags();
-registerServiceWorker();
 
 window.getTimeMachineMinDate = getTimeMachineMinDate;
 window.isValidTimeMachineDateAsync = isValidTimeMachineDateAsync;
