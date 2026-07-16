@@ -1,5 +1,7 @@
 <h1 align="center">What is WBDL?</h2>
+
 The **Web Browser Demon List** is a ranking of the hardest levels playable on the web-based version of Geometry Dash. The goal is simply to have fun, you shouldn't see this as an alternative to buying the actual game! (we do not condone piracy)
+
 
 Levels are ranked based on their estimated difficulty. Players earn **List Points** by completing levels, with harder levels awarding more points. This ranking system is inspired by other lists such as pointercrate.
 
