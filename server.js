@@ -188,7 +188,10 @@ function normalizeHistoricalPositions(rows = []) {
 
 function removeHistoricalEntry(rows, demonId) {
     const id = Number(demonId);
-    const index = rows.findIndex(row => Number(row.id) === id);
+    const index = rows.findIndex(row => 
+        Number(row.id) === id || 
+        Number(row.time_machine_original_demon_id) === id
+    );
     if (index === -1) return null;
     const [removed] = rows.splice(index, 1);
     return removed;
@@ -2316,9 +2319,9 @@ app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
         const userRes = await client.query('SELECT role FROM users WHERE id = $1', [actorId]);
         const userRole = userRes.rows[0]?.role;
 
-        if (targetPos > 150 && userRole !== 'owner') {
+        if (targetPos > 150) {
             client.release();
-            return res.status(403).json({ error: "Only the owner can place levels in the Legacy List (> 150)." });
+            return res.status(403).json({ error: "Levels cannot be placed in the legacy list." });
         }
 
         await client.query('BEGIN');
@@ -2502,9 +2505,9 @@ app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
         const userRes = await client.query('SELECT role FROM users WHERE id = $1', [actorId]);
         const userRole = userRes.rows[0]?.role;
 
-        if ((oldPos > 150 || newPos > 150) && userRole !== 'owner') {
+        if (oldPos > 150 || newPos > 150) {
             client.release();
-            return res.status(403).json({ error: "Only the owner can manipulate levels touching the Legacy List (> 150)." });
+            return res.status(403).json({ error: "Legacy List" });
         }
 
         await client.query('BEGIN');

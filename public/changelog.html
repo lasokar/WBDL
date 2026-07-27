@@ -128,7 +128,15 @@
             }
 
             if (log.changeType === 'moved') {
-                return `${levelName} was moved from <span class="b">#${escapeHtml(log.oldPosition)}</span> to <span class="b">#${escapeHtml(log.newPosition)}</span>`;
+                const oldPosition = Number(log.oldPosition) > 150
+                    ? 'the Legacy List'
+                    : `<span class="b">#${escapeHtml(log.oldPosition)}</span>`;
+
+                const newPosition = Number(log.newPosition) > 150
+                    ? 'the Legacy List'
+                    : `<span class="b">#${escapeHtml(log.newPosition)}</span>`;
+
+                return `${levelName} was moved from ${oldPosition} to ${newPosition}`;
             }
 
             if (log.changeType === 'deleted') {

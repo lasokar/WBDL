@@ -213,12 +213,13 @@
             const container = document.getElementById('admin-demon-list');
             
             const showDelete = currentUser && currentUser.role === 'owner';
+            const activeDemons = demons.filter(d => Number(d.position) <= 150);
 
-            container.innerHTML = demons.map(d => `
+            container.innerHTML = activeDemons.map(d => `
                 <div class="item-card" style="display: flex; justify-content: space-between; align-items: center;">
                     <div><span class="b">#${d.position}</span> ${d.name}</div>
-                    <div style="display: flex; gap: 8px;">
-                        <input type="number" id="move-to-${d.id}" value="${d.position}" style="width: 60px; margin: 0; height: 35px;">
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+                        <input type="number" id="move-to-${d.id}" value="${d.position}" min="1" max="150" style="width: 60px; margin: 0; height: 35px;">
                         <button class="btn-accept" onclick="moveLevel(${d.id}, ${d.position})">Move</button>
                         <button class="btn-delete ${showDelete ? '' : 'hidden'}" onclick="deleteLevel(${d.id}, ${d.position})">Delete</button>
                     </div>
@@ -384,6 +385,11 @@
         async function moveLevel(id, oldPos) {
             const newPos = parseInt(document.getElementById(`move-to-${id}`).value);
             if (!newPos || newPos === oldPos) return;
+
+            if (newPos > 150){
+                alert("You cannot move levels into the legacy list!");
+                return;
+            }
 
             const res = await fetch('/api/admin/move-demon', {
                 method: 'POST',
