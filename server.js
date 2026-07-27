@@ -3042,6 +3042,22 @@ app.get('/api/leaderboard', async (req, res) => {
                   AND COALESCE(u.leaderboard_banned, FALSE) = FALSE
                   AND COALESCE(u.account_disabled, FALSE) = FALSE
                 GROUP BY u.id, u.username, u.display_name, u.role, u.icon_type, u.icon_id, u.color1, u.color2, u.glow
+                HAVING SUM(
+                    CASE 
+                        WHEN d.position > 150 THEN 0
+                        
+                        WHEN $1 = 'impossible' 
+                            THEN (250 * EXP(-0.0263 * (d.position - 1))) * (r.percentage / 100.0)
+                        ELSE
+                            CASE 
+                                WHEN r.percentage = 100 
+                                    THEN (250 * EXP(-0.0263 * (d.position - 1)))
+                                WHEN d.position <= 75 AND r.percentage >= d.requirement 
+                                    THEN (250 * EXP(-0.0263 * (d.position - 1))) / 10
+                                ELSE 0 
+                            END
+                    END
+                ) > 0
             ),
             RankedPlayers AS (
                 SELECT 
