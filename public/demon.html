@@ -1234,9 +1234,7 @@
 
             updateText.innerHTML = updateVersion ? `Level made in ${escapeHtml(updateVersion)}` : '';
             uploadDateText.innerHTML = uploadDate ? `Uploaded: ${escapeHtml(uploadDate)}` : '';
-            averageEnjoymentText.innerHTML = averageEnjoyment
-                ? `Average enjoyment: ${escapeHtml(averageEnjoyment)}/10`
-                : 'Average enjoyment: Not rated';
+            averageEnjoymentText.innerHTML = averageEnjoyment ? `Average enjoyment: ${escapeHtml(averageEnjoyment)}/10` : '';
 
             meta.style.display = updateVersion || uploadDate || averageEnjoymentText.textContent ? 'block' : 'none';
         }
