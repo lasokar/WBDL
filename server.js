@@ -2301,17 +2301,26 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
 });
 
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
+const ILL_DISCORD_WEBHOOK_URL = process.env.ILL_DISCORD_WEBHOOK_URL;
 
-async function sendDiscordNotification(content) {
-    if (!DISCORD_WEBHOOK_URL) return;
+async function sendDiscordNotification(content, list = 'primary') {
+    const isILL = list === 'impossible';
+    const webhookUrl = isILL ? ILL_DISCORD_WEBHOOK_URL : DISCORD_WEBHOOK_URL;
+    
+    if (!webhookUrl) return;
+    
+    const username = isILL ? "Impossible List Changes" : "List Changes";
+    const avatarUrl = isILL ? "https://webdemonlist.org/assets/impossible.png" : "https://webdemonlist.org/assets/icon.png";
+    const roleId = isILL ? "1531774623052599539" : "1493780241628528730";
+
     try {
-        await fetch(DISCORD_WEBHOOK_URL, {
+        await fetch(webhookUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                username: "List Changes",
-                avatar_url: "https://webdemonlist.org/assets/icon.png",
-                content: `<@&1493780241628528730> ${content}`
+                username: username,
+                avatar_url: avatarUrl,
+                content: `<@&${roleId}> ${content}`
             })
         });
     } catch (err) {
@@ -2370,17 +2379,18 @@ app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
         
         await client.query('COMMIT');
 
+        const above = neighborsRes.rows.find(r => r.position == targetPos - 1)?.name;
+        const below = neighborsRes.rows.find(r => r.position == targetPos + 1)?.name;
+
+        let msg = `**${name}** has been placed at **#${targetPos}**`;
+        let context = [];
+        
+        if (below) context.push(`above **${below}**`);
+        if (above) context.push(`below **${above}**`);
+
+        if (context.length > 0) msg += ", " + context.join(" and ");
+
         if (list === 'primary') {
-            const above = neighborsRes.rows.find(r => r.position == targetPos - 1)?.name;
-            const below = neighborsRes.rows.find(r => r.position == targetPos + 1)?.name;
-
-            let msg = `**${name}** has been placed at **#${targetPos}**`;
-            let context = [];
-            
-            if (below) context.push(`above **${below}**`);
-            if (above) context.push(`below **${above}**`);
-
-            if (context.length > 0) msg += ", " + context.join(" and ");
             msg += ` with a list requirement of **${requirement}%**.`;
 
             let pushes = [];
@@ -2390,9 +2400,11 @@ app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
             if (pushes.length > 0) {
                 msg += ` This change pushes ${pushes.join(" and ")}.`;
             }
-
-            sendDiscordNotification(msg);
+        } else {
+            msg += `.`;
         }
+
+        sendDiscordNotification(msg, list);
 
         const leaderboardSync = await syncLeaderboardTopOne(list);
         for (const changedUserId of leaderboardSync.changedUserIds || []) {
@@ -2467,9 +2479,9 @@ app.post('/api/admin/delete-demon', isOwner, async (req, res) => {
         
         await client.query('COMMIT');
 
-        if (list === 'primary') {
-            let msg = `**${levelName}** has been removed from the list.`;
+        let msg = `**${levelName}** has been removed from the list.`;
 
+        if (list === 'primary') {
             let pushes = [];
             if (targetPos <= 75 && old76) pushes.push(`**${old76}** back to the Main List`);
             if (targetPos <= 150 && old151) pushes.push(`**${old151}** back to the Extended List`);
@@ -2477,9 +2489,9 @@ app.post('/api/admin/delete-demon', isOwner, async (req, res) => {
             if (pushes.length > 0) {
                 msg += ` This change pushes ${pushes.join(" and ")}.`;
             }
-
-            sendDiscordNotification(msg);
         }
+
+        sendDiscordNotification(msg, list);
 
         const leaderboardSync = await syncLeaderboardTopOne(list);
         for (const changedUserId of leaderboardSync.changedUserIds || []) {
@@ -2575,20 +2587,20 @@ app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
 
         await client.query('COMMIT');
 
+        const above = neighborsRes.rows.find(r => r.position == newPos - 1)?.name;
+        const below = neighborsRes.rows.find(r => r.position == newPos + 1)?.name;
+        
+        const action = newPos < oldPos ? "raised" : "lowered";
+        let msg = `**${levelName}** has been **${action}** to **#${newPos}**`;
+        
+        let context = [];
+        if (below) context.push(`above **${below}**`);
+        if (above) context.push(`below **${above}**`);
+
+        if (context.length > 0) msg += ", " + context.join(" and ");
+        msg += ".";
+
         if (list === 'primary') {
-            const above = neighborsRes.rows.find(r => r.position == newPos - 1)?.name;
-            const below = neighborsRes.rows.find(r => r.position == newPos + 1)?.name;
-            
-            const action = newPos < oldPos ? "raised" : "lowered";
-            let msg = `**${levelName}** has been **${action}** to **#${newPos}**`;
-            
-            let context = [];
-            if (below) context.push(`above **${below}**`);
-            if (above) context.push(`below **${above}**`);
-
-            if (context.length > 0) msg += ", " + context.join(" and ");
-            msg += ".";
-
             let pushes = [];
             if (newPos < oldPos) { 
                 if (newPos <= 75 && oldPos > 75 && old75) pushes.push(`**${old75}** into the Extended List`);
@@ -2601,9 +2613,9 @@ app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
             if (pushes.length > 0) {
                 msg += ` This change pushes ${pushes.join(" and ")}.`;
             }
-
-            sendDiscordNotification(msg);
         }
+
+        sendDiscordNotification(msg, list);
 
         const leaderboardSync = await syncLeaderboardTopOne(list);
         for (const changedUserId of leaderboardSync.changedUserIds || []) {
@@ -3817,8 +3829,6 @@ app.post('/api/submit-verification', async (req, res) => {
     }
 });
 
-
-// ---- Clans ---------------------------------------------------------------
 const CLAN_NAME_PATTERN = /^[A-Za-z0-9]{1,4}$/;
 const CLAN_MAX_MEMBERS = 8;
 const CLAN_DESCRIPTION_MAX_LENGTH = 50;
