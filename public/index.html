@@ -753,8 +753,6 @@
             setEmbeddedDemon(id);
         }
 
-
-
         function removeStaleIdParamFromUrl() {
             const url = new URL(window.location.href);
             if (!url.searchParams.has('id')) return;

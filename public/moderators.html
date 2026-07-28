@@ -417,31 +417,38 @@
             `).join('');
         }
 
-async function updateStatus(recordId, status) {
-    let reason = status === 'rejected' ? prompt("Reason for rejection:") : null;
-    
-    if (status === 'rejected' && reason === null) return;
+        async function updateStatus(recordId, status) {
+            let reason = status === 'rejected' ? prompt("Reason for rejection:") : null;
+            
+            if (status === 'rejected' && reason === null) return;
 
-    try {
-        const res = await fetch('/api/admin/update-record', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ recordId, status, reason })
-        });
+            try {
+                const res = await fetch('/api/admin/update-record', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ recordId, status, reason })
+                });
 
-        const data = await res.json();
+                const data = await res.json();
 
-        if (res.ok) {
-            alert(`Record ${status} successfully.`);
-            loadPending();
-        } else {
-            alert("Error: " + (data.error || "Failed to update record."));
+                if (res.status === 409) {
+                    alert(data.error);
+                    await loadPending();
+                    return;
+                }
+
+                if (res.ok) {
+                    alert(`Record ${status} successfully.`);
+                    loadPending();
+                } else {
+                    alert("Error: " + (data.error || "Failed to update record."));
+                }
+            } catch (err) {
+                console.error("Fetch error:", err);
+                alert("A network error occurred. Check console for details.");
+            }
         }
-    } catch (err) {
-        console.error("Fetch error:", err);
-        alert("A network error occurred. Check console for details.");
-    }
-}
+        
         document.getElementById('notification-options-modal').addEventListener('click', event => {
             if (event.target === event.currentTarget) closeNotificationOptions();
         });
@@ -452,6 +459,10 @@ async function updateStatus(recordId, status) {
 
         loadNotificationSettings();
         loadPending();
+
+        setInterval(() => {
+            loadPending();
+        }, 2000);
     </script>
 </body>
 </html>

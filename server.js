@@ -2247,12 +2247,24 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
             return res.status(403).json({ error: "You cannot review your own record." });
         }
 
-        await client.query(`
+        const updateResult = await client.query(`
             UPDATE records
             SET status = $1,
-                accepted_position = CASE WHEN $1 = 'accepted' THEN $2 ELSE accepted_position END
+                accepted_position = CASE
+                    WHEN $1 = 'accepted' THEN $2
+                    ELSE accepted_position
+                END
             WHERE id = $3
+              AND status = 'pending'
+            RETURNING id
         `, [status, record.position, recordId]);
+
+        if (!updateResult.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                error: "Another mod took care of this record first xd"
+            });
+        }
 
         const accepted = status === 'accepted';
         const body = accepted
