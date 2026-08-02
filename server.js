@@ -3800,6 +3800,10 @@ app.post('/api/submit-verification', async (req, res) => {
 
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
+    if (typeof name !== 'string' || name.trim().length > 20) {
+        return res.status(400).json({ error: "Level name is too long." });
+    }
+
     const placementOpinion = parseInt(opinion, 10);
     const normalizedEnjoyment = list === 'impossible'
         ? null

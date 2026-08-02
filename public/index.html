@@ -865,7 +865,7 @@
                 const imgId = `thumb-${isPlaceholder ? `placeholder-${demon.position}` : demon.id}`;
 
                 if (ytId) {
-                    thumbUrl = `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+                    thumbUrl = `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg`;
                 } else if (demon.showcase_link) {
                     nonYtVideoQueue.push({ url: demon.showcase_link, id: imgId });
                 }
