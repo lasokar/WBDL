@@ -3793,6 +3793,23 @@ app.get('/api/globalstats', async (req, res) => {
     }
 });
 
+function fixVideoUrl(url) {
+    if (typeof url !== 'string') return url;
+    try {
+        const parsed = new URL(url.trim());
+        if (
+            (parsed.hostname === 'youtube.com' || parsed.hostname === 'www.youtube.com') &&
+            parsed.pathname.startsWith('/shorts/')
+        ) {
+            const videoId = parsed.pathname.split('/shorts/')[1]?.split('/')[0];
+            if (videoId) {
+                return `https://www.youtube.com/watch?v=${videoId}`;
+            }
+        }
+    } catch (err) {}
+    return url;
+}
+
 app.post('/api/submit-verification', async (req, res) => {
     const { name, author, levelId, opinion, videoUrl, enjoymentRating } = req.body;
     const userId = req.session.userId;
@@ -3808,6 +3825,7 @@ app.post('/api/submit-verification', async (req, res) => {
     const normalizedEnjoyment = list === 'impossible'
         ? null
         : normalizeEnjoymentRating(enjoymentRating, 100);
+    const normalizedVideoUrl = normalizeYouTubeUrl(videoUrl);
     if (!Number.isInteger(placementOpinion) || placementOpinion < 1 || placementOpinion > 150) {
         return res.status(400).json({ error: "You can't submit for the legacy list." });
     }
