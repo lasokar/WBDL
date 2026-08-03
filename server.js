@@ -3825,7 +3825,7 @@ app.post('/api/submit-verification', async (req, res) => {
     const normalizedEnjoyment = list === 'impossible'
         ? null
         : normalizeEnjoymentRating(enjoymentRating, 100);
-    const normalizedVideoUrl = normalizeYouTubeUrl(videoUrl);
+    const fixedVideoUrl = fixVideoUrl(videoUrl);
     if (!Number.isInteger(placementOpinion) || placementOpinion < 1 || placementOpinion > 150) {
         return res.status(400).json({ error: "You can't submit for the legacy list." });
     }
@@ -3842,7 +3842,7 @@ app.post('/api/submit-verification', async (req, res) => {
             `INSERT INTO verifications
                 (user_id, level_name, level_author, level_id, video_url, placement_opinion, list_type, enjoyment_rating)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [userId, name, author, levelId, videoUrl, placementOpinion, list, normalizedEnjoyment]
+            [userId, name, author, levelId, fixedVideoUrl, placementOpinion, list, normalizedEnjoyment]
         );
         res.json({ message: "Verification submitted successfully!" });
     } catch (err) {
