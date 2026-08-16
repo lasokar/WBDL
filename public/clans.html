@@ -955,7 +955,7 @@ window.WBDLIconRenderer = (() => {
                             </div>
                         </div>
                     </td>
-                    <td class="muted">${Number(clan.memberCount)}/8</td>
+                    <td class="muted">${Number(clan.memberCount)}/6</td>
                     <td class="points">${escapeHtml(clan.totalPoints)}</td>
                 </tr>
             `).join('');
@@ -1033,7 +1033,7 @@ window.WBDLIconRenderer = (() => {
                 } else if (!viewer.myClanId) {
                     if (viewer.application) {
                         joinAction = '<button class="secondary-btn" type="button" disabled>Application pending</button>';
-                    } else if (Number(clan.memberCount) >= 8) {
+                    } else if (Number(clan.memberCount) >= 6) {
                         joinAction = '<button class="secondary-btn" type="button" disabled>Clan full</button>';
                     } else if (viewer.canApply) {
                         joinAction = '<button class="primary-btn" type="button" onclick="applyToClan()">Apply to join</button>';
@@ -1063,7 +1063,7 @@ window.WBDLIconRenderer = (() => {
                         </div>
                         <div class="clan-stats">
                             <div class="clan-stat"><span class="clan-stat-label">Rank</span><span class="clan-stat-value">#${Number(clan.rank)}</span></div>
-                            <div class="clan-stat"><span class="clan-stat-label">Members</span><span class="clan-stat-value">${Number(clan.memberCount)}/8</span></div>
+                            <div class="clan-stat"><span class="clan-stat-label">Members</span><span class="clan-stat-value">${Number(clan.memberCount)}/6</span></div>
                             <div class="clan-stat"><span class="clan-stat-label">Points</span><span class="clan-stat-value" style="color:var(--accent);">${escapeHtml(clan.totalPoints)}</span></div>
                         </div>
                     </div>

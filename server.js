@@ -3852,7 +3852,7 @@ app.post('/api/submit-verification', async (req, res) => {
 });
 
 const CLAN_NAME_PATTERN = /^[A-Za-z0-9]{1,4}$/;
-const CLAN_MAX_MEMBERS = 8;
+const CLAN_MAX_MEMBERS = 6;
 const CLAN_DESCRIPTION_MAX_LENGTH = 50;
 const CLAN_ICON_MAX_BYTES = 100 * 1024;
 
