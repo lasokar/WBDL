@@ -152,7 +152,7 @@ async function getTimeMachineMinDateValue(list) {
     const minDate = new Date(firstCreatedAt);
     if (Number.isNaN(minDate.getTime())) return null;
 
-    minDate.setUTCDate(minDate.getUTCDate() - 1);
+    minDate.setUTCDate(minDate.getUTCDate());
     return getDateInputValue(minDate);
 }
 
