@@ -1873,9 +1873,9 @@
         function getSortedCompletedRecords(records) {
             let list = Array.isArray(records) ? records.slice() : [];
             if (completedFilterMode === 'verification') {
-                list = list.filter(record => Boolean(record.from_verification));
+                list = list.filter(record => Number.parseInt(record.completion_status, 10) === 0);
             } else if (completedFilterMode === 'first-victor') {
-                list = list.filter(record => !record.from_verification && Number.parseInt(record.completion_status, 10) === 1);
+                list = list.filter(record => Number.parseInt(record.completion_status, 10) === 1);
             }
 
             if (completedSortMode === 'difficult') {

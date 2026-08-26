@@ -3048,7 +3048,6 @@ app.get('/api/profile/:username', async (req, res) => {
                 r.video_url,
                 r.enjoyment_rating,
                 r.accepted_position,
-                (r.verification_id IS NOT NULL) AS from_verification,
                 d.name,
                 d.position,
                 d.requirement,
