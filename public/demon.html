@@ -464,6 +464,7 @@
                 <div id="level-update-text"></div>
                 <div id="level-upload-date-text"></div>
                 <div id="level-average-enjoyment-text"></div>
+                <div id="level-community-placement-text"></div>
             </div>
             <h1 id="demon-name">Level Name</h1>
             <div style="margin-top: 10px; display: flex; align-items: center; gap: 15px;">
@@ -519,7 +520,7 @@
 
             <label class="record-moderation-field">
                 <span>Percentage</span>
-                <input id="record-moderation-percentage" type="number" min="1" max="100" inputmode="numeric" oninput="clampRecordPercentage(this); syncRecordEnjoymentField();">
+                <input id="record-moderation-percentage" type="number" min="1" max="100" step="0.01" inputmode="decimal" oninput="clampRecordPercentage(this); syncRecordEnjoymentField();">
             </label>
 
             <label class="record-moderation-field">
@@ -1220,23 +1221,47 @@
             return Number.isInteger(average) ? String(average) : average.toFixed(1);
         }
 
+        function getCommunityPlacement(records) {
+            const oneMonthAgo = new Date();
+            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+            const placements = (Array.isArray(records) ? records : [])
+                .filter(record => {
+                    if (Number(record.percentage) !== 100) return false;
+                    if (record.verification_id != null) return false;
+
+                    const createdAt = new Date(record.created_at);
+                    return !Number.isNaN(createdAt.getTime()) && createdAt >= oneMonthAgo;
+                })
+                .map(record => Number(record.personal_placement))
+                .filter(placement => Number.isInteger(placement) && placement >= 1 && placement <= 150);
+
+            if (!placements.length) return '';
+
+            const average = placements.reduce((total, placement) => total + placement, 0) / placements.length;
+            return Number.isInteger(average) ? String(average) : average.toFixed(1);
+        }
+
         function renderLevelMeta(data) {
             const meta = document.getElementById('level-meta-corner');
             const updateText = document.getElementById('level-update-text');
             const uploadDateText = document.getElementById('level-upload-date-text');
             const averageEnjoymentText = document.getElementById('level-average-enjoyment-text');
+            const communityPlacementText = document.getElementById('level-community-placement-text');
 
-            if (!meta || !updateText || !uploadDateText || !averageEnjoymentText) return;
+            if (!meta || !updateText || !uploadDateText || !averageEnjoymentText || !communityPlacementText) return;
 
             const updateVersion = data.level_update || '';
             const uploadDate = formatEstimatedUploadDate(data.upload_date_estimate);
             const averageEnjoyment = getAverageEnjoyment(data.records);
+            const communityPlacement = getCommunityPlacement(data.records);
 
             updateText.innerHTML = updateVersion ? `Level made in ${escapeHtml(updateVersion)}` : '';
             uploadDateText.innerHTML = uploadDate ? `Uploaded: ${escapeHtml(uploadDate)}` : '';
             averageEnjoymentText.innerHTML = averageEnjoyment ? `Average enjoyment: ${escapeHtml(averageEnjoyment)}/10` : '';
+            communityPlacementText.innerHTML = communityPlacement ? `Community placement: #${escapeHtml(communityPlacement)}` : '';
 
-            meta.style.display = updateVersion || uploadDate || averageEnjoymentText.textContent ? 'block' : 'none';
+            meta.style.display = updateVersion || uploadDate || averageEnjoymentText.textContent || communityPlacementText.textContent ? 'block' : 'none';
         }
 
         function getProfileUrl(username) {
@@ -1350,7 +1375,7 @@
             const record = activeModeratedRecord;
             if (!record) return;
 
-            const percentage = parseInt(document.getElementById('record-moderation-percentage').value, 10);
+            const percentage = Number(document.getElementById('record-moderation-percentage').value);
             const videoUrl = document.getElementById('record-moderation-video').value.trim();
             const status = document.getElementById('record-moderation-status').value;
             const reason = document.getElementById('record-moderation-reason').value.trim();
@@ -1358,8 +1383,12 @@
                 ? document.getElementById('record-moderation-enjoyment').value
                 : '';
 
-            if (!Number.isInteger(percentage) || percentage < 1 || percentage > 100) {
+            if (!Number.isFinite(percentage) || percentage < 1 || percentage > 100) {
                 alert('Percentage must be between 1 and 100.');
+                return;
+            }
+            if (!isImpossibleList && !Number.isInteger(percentage)) {
+                alert('Main-list percentages must be whole numbers.');
                 return;
             }
 

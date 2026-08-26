@@ -477,6 +477,9 @@
             color: var(--text-muted);
             font-weight: 700;
         }
+        .completed-sort-wrap label[for="completed-sort"] {
+            margin-left: 5px;
+        }
 
         .completed-sort-select {
             background: var(--bg);
@@ -914,6 +917,12 @@
                 <div class="section-head">
                     <h3 style="margin: 0;">Levels Beaten</h3>
                     <div class="completed-sort-wrap">
+                        <label for="completed-filter">Filter</label>
+                        <select id="completed-filter" class="completed-sort-select" onchange="setCompletedFilter(this.value)">
+                            <option value="all" selected>All Records</option>
+                            <option value="verification">Verifications</option>
+                            <option value="first-victor">First Victor</option>
+                        </select>
                         <label for="completed-sort">Sort</label>
                         <select id="completed-sort" class="completed-sort-select" onchange="setCompletedSort(this.value)">
                             <option value="recent" selected>Most recent</option>
@@ -1482,6 +1491,7 @@
 
         let completedRecordsCache = [];
         let completedSortMode = 'recent';
+        let completedFilterMode = 'all';
         let hardestRecordCache = null;
         let currentProfileData = null;
         let moderationPanelData = null;
@@ -1855,8 +1865,18 @@
             renderCompletedLevels();
         }
 
+        function setCompletedFilter(mode) {
+            completedFilterMode = ['all', 'verification', 'first-victor'].includes(mode) ? mode : 'all';
+            renderCompletedLevels();
+        }
+
         function getSortedCompletedRecords(records) {
-            const list = Array.isArray(records) ? records.slice() : [];
+            let list = Array.isArray(records) ? records.slice() : [];
+            if (completedFilterMode === 'verification') {
+                list = list.filter(record => Boolean(record.from_verification));
+            } else if (completedFilterMode === 'first-victor') {
+                list = list.filter(record => !record.from_verification && Number.parseInt(record.completion_status, 10) === 1);
+            }
 
             if (completedSortMode === 'difficult') {
                 return list;
@@ -2319,8 +2339,11 @@
 
                 completedRecordsCache = completed;
                 completedSortMode = 'recent';
+                completedFilterMode = 'all';
                 const sortSelect = document.getElementById('completed-sort');
                 if (sortSelect) sortSelect.value = completedSortMode;
+                const filterSelect = document.getElementById('completed-filter');
+                if (filterSelect) filterSelect.value = completedFilterMode;
 
                 const completedListWorthy = completed.filter(r => parseInt(r.position, 10) <= 150);
                 const progress = records.filter(r => parseInt(r.percentage, 10) !== 100);

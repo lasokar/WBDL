@@ -396,6 +396,7 @@ async function loadNavbar() {
                 <a href="/clans" style="${navLink}">Clans</a>
                 <a href="/changelog" style="${navLink}">Changelog</a>
                 <a href="javascript:openTimeMachine()" style="${navLink}">Time Machine</a>
+                <a href="/roulette" style="${navLink}">Roulette</a>
                 ${listSwapLink}
             </div>
             <div id="user-nav">${userSection}</div>

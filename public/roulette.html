@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roulette | WBDL</title>
+    <link rel="icon" type="image/png" href="/assets/icon.png">
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .roulette-page {
+            width: min(1080px, calc(100% - 28px));
+            margin: 0 auto;
+            padding: 30px 0 54px;
+        }
+
+        .roulette-title {
+            margin: 0 0 22px;
+            text-align: center;
+            font-family: var(--font-display);
+            font-size: clamp(1.9rem, 5vw, 2.7rem);
+            color: var(--text);
+        }
+
+        .current-level-card,
+        .history-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .current-level-card {
+            display: grid;
+            grid-template-columns: minmax(0, 1.08fr) minmax(410px, .92fr);
+            gap: 20px;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .video-shell {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            overflow: hidden;
+            border-radius: var(--radius);
+            background: #070707;
+            border: 1px solid var(--border);
+        }
+
+        .video-shell iframe,
+        .video-shell video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+
+        .video-shell video { object-fit: contain; }
+
+        .video-empty {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            box-sizing: border-box;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: .85rem;
+        }
+
+        .level-details {
+            min-width: 0;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(132px, .62fr);
+            gap: 18px;
+            align-items: center;
+        }
+        .level-info { min-width: 0; }
+        .level-position {
+            margin-bottom: 8px;
+            font-family: var(--font-display);
+            font-size: clamp(1.9rem, 4.5vw, 2.8rem);
+            line-height: 1;
+            color: var(--accent);
+        }
+        .level-name {
+            margin: 0;
+            font-size: (clamp(1.45rem, 3.4vw, 2rem)) / 2;
+            line-height: 1.08;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+        .level-id {
+            margin-top: 8px;
+            font-size: 1.08rem;
+            color: var(--text-muted);
+        }
+        .publisher-label {
+            margin-top: 16px;
+            color: var(--text-muted);
+            font-size: .82rem;
+        }
+        .publisher-name {
+            display: block;
+            margin-top: 3px;
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: var(--text);
+            font-size: .9rem;
+            overflow-wrap: anywhere;
+        }
+
+        .progress-entry {
+            margin-top: 0;
+            min-width: 0;
+        }
+        .progress-entry label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-muted);
+            font-size: .68rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 800;
+        }
+        .progress-entry input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 9px 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg);
+            color: var(--text);
+            font: inherit;
+            font-size: .9rem;
+        }
+        .progress-entry input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .progress-hint {
+            min-height: 16px;
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: .7rem;
+        }
+
+        .done-button,
+        .roulette-control {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            font: inherit;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .done-button {
+            width: 100%;
+            margin-top: 5px;
+            padding: 9px 12px;
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #000;
+            font-size: .9rem;
+        }
+        .done-button:hover { background: var(--accent-hover); }
+        .done-button:disabled { opacity: .5; cursor: not-allowed; }
+
+        .roulette-options {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .legacy-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--text-muted);
+            font-size: .78rem;
+            font-weight: 700;
+            cursor: pointer;
+            user-select: none;
+        }
+        .legacy-toggle input {
+            width: 15px;
+            height: 15px;
+            margin: 0;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .save-controls {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 20px 0 10px;
+        }
+        .roulette-control {
+            min-width: 118px;
+            padding: 8px 14px;
+            background: var(--surface);
+            color: var(--text);
+            font-size: .82rem;
+        }
+        .roulette-control:hover { border-color: var(--accent); }
+        .roulette-control.export { background: #123d16; }
+        .roulette-control.reset { background: #461515; }
+        #roulette-import-input { display: none; }
+
+        .history-panel { padding: 20px; }
+        .history-panel h2 {
+            margin: 0 0 16px;
+            text-align: center;
+            font-family: var(--font-display);
+            font-size: clamp(1.25rem, 3vw, 1.6rem);
+            color: var(--text);
+        }
+        .history-list { display: grid; gap: 9px; }
+        .history-card {
+            position: relative;
+            min-height: 84px;
+            padding: 14px 66px 14px 18px;
+            box-sizing: border-box;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .history-name {
+            color: var(--text);
+            font-family: var(--font-display);
+            font-size: 1.08rem;
+            font-weight: 800;
+            text-decoration: none;
+            overflow-wrap: anywhere;
+        }
+        .history-name:hover { color: var(--accent); }
+        .history-progress {
+            margin-top: 5px;
+            color: var(--text-muted);
+            font-size: .86rem;
+        }
+        .history-check {
+            position: absolute;
+            top: 50%;
+            right: 18px;
+            transform: translateY(-50%);
+            width: 34px;
+            height: 34px;
+            border: 4px solid #00d084;
+            border-radius: 50%;
+            color: #00d084;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.35rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+        .empty-history {
+            padding: 26px 10px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .complete-state {
+            grid-column: 1 / -1;
+            padding: 50px 20px;
+            text-align: center;
+        }
+        .complete-state h2 {
+            margin: 0 0 10px;
+            font-family: var(--font-display);
+            font-size: 2.4rem;
+        }
+        .complete-state p { margin: 0; color: var(--text-muted); }
+
+        @media (max-width: 860px) {
+            .current-level-card { grid-template-columns: 1fr; padding: 16px; }
+            .level-details { grid-template-columns: minmax(0, 1fr) minmax(125px, .45fr); }
+            .history-panel { padding: 16px; }
+        }
+
+        @media (max-width: 560px) {
+            .level-details { grid-template-columns: 1fr; gap: 14px; }
+            .progress-entry { max-width: none; }
+            .save-controls { gap: 8px; }
+            .roulette-control { min-width: 96px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="global-nav"></div>
+
+    <main class="roulette-page">
+        <h1 class="roulette-title">Current Level</h1>
+
+        <section class="current-level-card" id="current-level-card">
+            <div class="video-shell" id="roulette-video">
+                <div class="video-empty">Loading verification video...</div>
+            </div>
+            <div class="level-details" id="roulette-level-details">
+                <div class="level-name">Loading a level...</div>
+            </div>
+        </section>
+
+        <div class="save-controls">
+            <button type="button" class="roulette-control" onclick="document.getElementById('roulette-import-input').click()">Import</button>
+            <button type="button" class="roulette-control export" onclick="exportSave()">Export</button>
+            <button type="button" class="roulette-control reset" onclick="resetRoulette()">Reset</button>
+        </div>
+        <input id="roulette-import-input" type="file" accept="application/json,.json" onchange="importSave(event)">
+
+        <div class="roulette-options">
+            <label class="legacy-toggle" for="include-legacy-levels">
+                <input id="include-legacy-levels" type="checkbox" onchange="toggleLegacyLevels(this.checked)">
+                <span>Include Legacy Levels</span>
+            </label>
+        </div>
+
+        <section class="history-panel">
+            <h2>Level History</h2>
+            <div class="history-list" id="roulette-history"></div>
+        </section>
+    </main>
+
+    <script src="/nav.js"></script>
+    <script>
+        if (window.location.hostname.startsWith('impossible.')) {
+            const mainHost = window.location.host.replace(/^impossible\./, '');
+            window.location.replace(`${window.location.protocol}//${mainHost}/roulette`);
+        }
+
+        const STORAGE_KEY = 'wbdl-roulette-save-v2';
+        const LEGACY_STORAGE_KEY = 'wbdl-roulette-save-v1';
+        let demons = [];
+        let includeLegacyLevels = false;
+        let state = loadSave();
+
+        function defaultSave() {
+            return {
+                version: 2,
+                target: 1,
+                currentLevelId: null,
+                history: [],
+                completed: false
+            };
+        }
+
+        function sanitizeHistoryItem(item) {
+            if (!item || typeof item !== 'object' || item.status === 'rerolled') return null;
+            const completedProgress = Number.parseInt(item.completedProgress ?? item.progress ?? item.target, 10);
+            if (!Number.isInteger(completedProgress) || completedProgress < 1 || completedProgress > 100) return null;
+            return {
+                levelId: Number.isFinite(Number(item.levelId)) ? Number(item.levelId) : null,
+                levelGameId: String(item.levelGameId ?? item.level_id ?? '').slice(0, 40),
+                name: String(item.name || 'Unknown level').slice(0, 120),
+                author: String(item.author || item.publisher || '').slice(0, 120),
+                position: Number.isFinite(Number(item.position)) ? Number(item.position) : null,
+                completedProgress,
+                at: String(item.at || '')
+            };
+        }
+
+        function sanitizeSave(value) {
+            const base = defaultSave();
+            if (!value || typeof value !== 'object') return base;
+            const target = Number.parseInt(value.target, 10);
+            const history = Array.isArray(value.history)
+                ? value.history.map(sanitizeHistoryItem).filter(Boolean).slice(-500)
+                : [];
+            return {
+                version: 2,
+                target: Number.isInteger(target) ? Math.min(100, Math.max(1, target)) : 1,
+                currentLevelId: Number.isFinite(Number(value.currentLevelId)) ? Number(value.currentLevelId) : null,
+                history,
+                completed: Boolean(value.completed)
+            };
+        }
+
+        function loadSave() {
+            try {
+                const current = localStorage.getItem(STORAGE_KEY);
+                if (current) return sanitizeSave(JSON.parse(current));
+                const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+                if (legacy) {
+                    const migrated = sanitizeSave(JSON.parse(legacy));
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+                    return migrated;
+                }
+            } catch (_) {}
+            return defaultSave();
+        }
+
+        function persistSave() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function eligibleLevels() {
+            return includeLegacyLevels
+                ? demons
+                : demons.filter(demon => Number(demon.position) <= 150);
+        }
+
+        function currentLevel() {
+            const eligible = eligibleLevels();
+            return eligible.find(demon => Number(demon.id) === Number(state.currentLevelId)) || null;
+        }
+
+        function chooseRandomLevel(avoidId = null) {
+            const eligible = eligibleLevels();
+            if (!eligible.length) return null;
+            const pool = eligible.length > 1 && avoidId != null
+                ? eligible.filter(demon => Number(demon.id) !== Number(avoidId))
+                : eligible;
+            return pool[Math.floor(Math.random() * pool.length)] || eligible[0];
+        }
+
+        function toggleLegacyLevels(checked) {
+            includeLegacyLevels = Boolean(checked);
+            if (!state.completed && !currentLevel()) {
+                const next = chooseRandomLevel();
+                state.currentLevelId = next ? Number(next.id) : null;
+                persistSave();
+            }
+            render();
+        }
+
+        function ensureCurrentLevel() {
+            let level = currentLevel();
+            if (!level && !state.completed) {
+                level = chooseRandomLevel();
+                state.currentLevelId = level ? Number(level.id) : null;
+                persistSave();
+            }
+            return level;
+        }
+
+        function getYoutubeId(url) {
+            const match = String(url || '').match(/(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/ ]{11})/);
+            return match ? match[1] : null;
+        }
+
+        function renderVerificationVideo(level) {
+            const container = document.getElementById('roulette-video');
+            const url = level ? String(level.verification_video_url || level.showcase_link || '').trim() : '';
+            if (!url) {
+                container.innerHTML = '<div class="video-empty">No verification video is available for this level.</div>';
+                return;
+            }
+
+            const youtubeId = getYoutubeId(url);
+            if (youtubeId) {
+                container.innerHTML = `<iframe src="https://www.youtube.com/embed/${encodeURIComponent(youtubeId)}" title="Verification video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+                return;
+            }
+
+            const safeUrl = escapeHtml(url);
+            container.innerHTML = `
+                <video controls playsinline>
+                    <source src="${safeUrl}" type="video/mp4">
+                    <source src="${safeUrl}" type="video/webm">
+                    Your browser does not support the video tag.
+                </video>
+            `;
+        }
+
+        function renderCurrentLevel() {
+            const card = document.getElementById('current-level-card');
+            if (state.completed) {
+                card.innerHTML = `
+                    <div class="complete-state">
+                        <h2>GG!</h2>
+                        <p>You completed the roulette.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const level = ensureCurrentLevel();
+            if (!level) {
+                card.innerHTML = '<div class="complete-state"><h2>No levels available.</h2></div>';
+                return;
+            }
+
+            card.innerHTML = `
+                <div class="video-shell" id="roulette-video"></div>
+                <div class="level-details" id="roulette-level-details">
+                    <div class="level-info">
+                        <div class="level-position">#${escapeHtml(level.position)}</div>
+                        <h2 class="level-name">${escapeHtml(level.name)}</h2>
+                        <div class="level-id">(ID: ${escapeHtml(level.level_id || 'None')})</div>
+                        <div class="publisher-label">Published by:</div>
+                        <div class="publisher-name">${escapeHtml(level.author || 'Unknown')}</div>
+                    </div>
+                    <div class="progress-entry">
+                        <label for="roulette-progress">Progress</label>
+                        <input id="roulette-progress" type="number" min="${state.target}" max="100" step="1" placeholder="${state.target}" inputmode="numeric" oninput="clampProgressInput(this)">
+                        <div class="progress-hint">At least ${state.target}%</div>
+                        <button type="button" class="done-button" id="complete-round-btn" onclick="completeRound()">Done</button>
+                    </div>
+                </div>
+            `;
+            renderVerificationVideo(level);
+        }
+
+        function clampProgressInput(input) {
+            if (input.value === '') return;
+            const value = Number(input.value);
+            if (Number.isFinite(value) && value > 100) input.value = '100';
+        }
+
+        function addHistory(level, completedProgress) {
+            state.history.push({
+                levelId: Number(level.id),
+                levelGameId: String(level.level_id || ''),
+                name: String(level.name || 'Unknown level'),
+                author: String(level.author || ''),
+                position: Number(level.position) || null,
+                completedProgress,
+                at: new Date().toISOString()
+            });
+            state.history = state.history.slice(-500);
+        }
+
+        function completeRound() {
+            if (state.completed) return;
+            const level = ensureCurrentLevel();
+            if (!level) return;
+
+            const input = document.getElementById('roulette-progress');
+            const progress = Number.parseInt(input?.value, 10);
+            if (!Number.isInteger(progress) || progress < state.target || progress > 100) {
+                alert(`Enter a progress.`);
+                return;
+            }
+
+            addHistory(level, progress);
+
+            if (progress >= 100) {
+                state.target = 100;
+                state.completed = true;
+                state.currentLevelId = null;
+            } else {
+                state.target = progress + 1;
+                const next = chooseRandomLevel(level.id);
+                state.currentLevelId = next ? Number(next.id) : null;
+            }
+
+            persistSave();
+            render();
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('roulette-history');
+            if (!state.history.length) {
+                container.innerHTML = '<div class="empty-history">No history.</div>';
+                return;
+            }
+
+            container.innerHTML = state.history.slice().reverse().map(item => {
+                const title = `${item.position ? `#${item.position} – ` : ''}${item.name}`;
+                return `
+                    <div class="history-card">
+                        ${item.levelId
+                            ? `<a class="history-name" href="/demon/${encodeURIComponent(item.levelId)}" target="_blank" rel="noopener">${escapeHtml(title)}</a>`
+                            : `<div class="history-name">${escapeHtml(title)}</div>`}
+                        <div class="history-progress">Completed: ${escapeHtml(item.completedProgress)}%</div>
+                        <div class="history-check" aria-label="Completed">✓</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function render() {
+            renderCurrentLevel();
+            renderHistory();
+        }
+
+        function exportSave() {
+            persistSave();
+            const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = 'wbdl-roulette-save.json';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        async function importSave(event) {
+            const input = event.target;
+            const file = input.files && input.files[0];
+            input.value = '';
+            if (!file) return;
+
+            try {
+                state = sanitizeSave(JSON.parse(await file.text()));
+                if (!state.completed && !currentLevel()) {
+                    const next = chooseRandomLevel();
+                    state.currentLevelId = next ? Number(next.id) : null;
+                }
+                persistSave();
+                render();
+            } catch (_) {
+                alert('That file is not a valid WBDL roulette save.');
+            }
+        }
+
+        function resetRoulette() {
+            if (!confirm('Are you sure you want to reset your progress? This cannot be undone.')) return;
+            state = defaultSave();
+            const first = chooseRandomLevel();
+            state.currentLevelId = first ? Number(first.id) : null;
+            persistSave();
+            render();
+        }
+
+        async function loadRoulette() {
+            try {
+                const response = await fetch('/api/demons');
+                const data = await response.json();
+                if (!response.ok || !Array.isArray(data)) throw new Error('Could not load WBDL levels.');
+                demons = data.filter(demon => !demon.time_machine_deleted_placeholder && demon.id && Number.isFinite(Number(demon.position)));
+                ensureCurrentLevel();
+                render();
+            } catch (err) {
+                document.getElementById('current-level-card').innerHTML = `<div class="complete-state"><h2>${escapeHtml(err.message)}</h2></div>`;
+            }
+        }
+
+        loadRoulette();
+    </script>
+</body>
+</html>

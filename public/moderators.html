@@ -40,8 +40,9 @@
     }
 
     .item-card {
+        position: relative;
         background: var(--bg);
-        padding: 18px 20px;
+        padding: 18px 64px 18px 20px;
         border-radius: var(--radius-sm);
         margin-bottom: 12px;
         display: flex;
@@ -82,6 +83,50 @@
     }
     .video-link:hover { color: var(--accent); }
 
+    .record-review-actions {
+        min-width: max-content;
+        margin-left: auto;
+    }
+
+    .record-review-buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+
+    .submission-info-btn {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .submission-info-btn img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+    }
+
+    .submission-info-btn:hover { transform: scale(1.06); }
+
+    .submission-comment-text {
+        margin: 0;
+        color: var(--text);
+        line-height: 1.55;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
 
     .moderator-options-btn {
         position: absolute;
@@ -276,6 +321,16 @@
         </div>
     </div>
 
+    <div id="submission-comment-modal" class="notification-options-overlay hidden" aria-hidden="true">
+        <div class="notification-options-box" role="dialog" aria-modal="true" aria-labelledby="submission-comment-title">
+            <div class="notification-options-header">
+                <h3 id="submission-comment-title">Additional Notes:</h3>
+                <button type="button" class="notification-options-close" onclick="closeSubmissionComment()" aria-label="Close">&times;</button>
+            </div>
+            <p id="submission-comment-text" class="submission-comment-text"></p>
+        </div>
+    </div>
+
     <script src="/nav.js"></script>
     <script>
         const notificationSettings = {
@@ -293,6 +348,24 @@
 
         function closeNotificationOptions() {
             const modal = document.getElementById('notification-options-modal');
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
+        function openSubmissionComment(button) {
+            const modal = document.getElementById('submission-comment-modal');
+            const text = document.getElementById('submission-comment-text');
+            try {
+                text.textContent = decodeURIComponent(button.dataset.comment || '');
+            } catch (_) {
+                text.textContent = button.dataset.comment || '';
+            }
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeSubmissionComment() {
+            const modal = document.getElementById('submission-comment-modal');
             modal.classList.add('hidden');
             modal.setAttribute('aria-hidden', 'true');
         }
@@ -386,6 +459,15 @@
             saveNotificationSettings(previous);
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         async function loadPending() {
             const res = await fetch('/api/admin/pending');
             if (!res.ok) {
@@ -400,33 +482,38 @@
             }
             container.innerHTML = records.map(rec => `
                 <div class="item-card">
+                    ${rec.submission_comments ? `<button type="button" class="submission-info-btn" data-comment="${encodeURIComponent(rec.submission_comments)}" onclick="openSubmissionComment(this)" aria-label="View submission comment" title="View submission comment"><img src="/assets/smallinfo.png" alt=""></button>` : ''}
                     <div>
-                        <a href="/profile?user=${rec.username}" 
+                        <a href="/profile?user=${encodeURIComponent(rec.username)}" 
                style="color: var(--accent); text-decoration: none; font-weight: bold; font-size: 1.1em;">
-               ${rec.username}
+               ${escapeHtml(rec.username)}
             </a><br>
-                        <span>${rec.demon_name} (${rec.percentage}%)</span><br>
-                        ${rec.enjoyment_rating ? `<span style="color:var(--text-muted);font-size:0.86em;">Enjoyment: ${rec.enjoyment_rating}/10</span><br>` : ''}
-                        <a href="${rec.video_url}" target="_blank" class="video-link">View Video</a>
+                        <span>${escapeHtml(rec.demon_name)} (${escapeHtml(rec.percentage)}%)</span><br>
+                        ${rec.enjoyment_rating ? `<span style="color:var(--text-muted);font-size:0.86em;">Enjoyment: ${escapeHtml(rec.enjoyment_rating)}/10</span><br>` : ''}
+                        <a href="${escapeHtml(rec.video_url)}" target="_blank" rel="noopener" class="video-link">View Video</a>
                     </div>
-                    <div>
-                        <button class="btn-accept" onclick="updateStatus(${rec.id}, 'accepted')">Accept</button>
-                        <button class="btn-reject" onclick="updateStatus(${rec.id}, 'rejected')">Deny</button>
+                    <div class="record-review-actions">
+                        <div class="record-review-buttons">
+                            <button class="btn-accept" onclick="updateStatus(${rec.id}, 'accepted')">Accept</button>
+                            <button class="btn-reject" onclick="updateStatus(${rec.id}, 'rejected')">Deny</button>
+                        </div>
                     </div>
                 </div>
             `).join('');
         }
 
         async function updateStatus(recordId, status) {
-            let reason = status === 'rejected' ? prompt("Reason for rejection:") : null;
-            
+            const reason = status === 'rejected' ? prompt("Reason for rejection:") : null;
+            const note = status === 'accepted' ? prompt("Note to record submitter (optional):") : null;
+
             if (status === 'rejected' && reason === null) return;
+            if (status === 'accepted' && note === null) return;
 
             try {
                 const res = await fetch('/api/admin/update-record', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ recordId, status, reason })
+                    body: JSON.stringify({ recordId, status, reason, note })
                 });
 
                 const data = await res.json();
@@ -452,9 +539,15 @@
         document.getElementById('notification-options-modal').addEventListener('click', event => {
             if (event.target === event.currentTarget) closeNotificationOptions();
         });
+        document.getElementById('submission-comment-modal').addEventListener('click', event => {
+            if (event.target === event.currentTarget) closeSubmissionComment();
+        });
 
         document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') closeNotificationOptions();
+            if (event.key === 'Escape') {
+                closeNotificationOptions();
+                closeSubmissionComment();
+            }
         });
 
         loadNotificationSettings();

@@ -107,6 +107,48 @@
         }
         .nav-back { display: inline-block; margin-bottom: 12px; color: var(--text-muted); text-decoration: none; font-size: 0.9em; }
         .nav-back:hover { color: var(--accent); }
+        .verification-card { position: relative; padding-right: 62px; }
+        .submission-info-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .submission-info-btn img { width: 100%; height: 100%; object-fit: contain; display: block; }
+        .submission-info-btn:hover { transform: scale(1.06); }
+        .comment-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.78);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .comment-modal-box {
+            width: min(520px, 100%);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 22px;
+            box-sizing: border-box;
+        }
+        .comment-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+        .comment-modal-head h3 { margin: 0; }
+        .comment-modal-close { background: transparent; color: var(--text-muted); padding: 4px 8px; font-size: 1.4rem; }
+        .comment-modal-close:hover { color: var(--danger); }
+        #verification-comment-text { margin: 0; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
         .hidden { display: none !important; }
     </style>
 </head>
@@ -160,6 +202,16 @@
             <div id="pending-verifications">Loading levels...</div>
         </section>
     </main>
+
+    <div id="verification-comment-modal" class="comment-modal hidden" aria-hidden="true">
+        <div class="comment-modal-box" role="dialog" aria-modal="true" aria-labelledby="verification-comment-title">
+            <div class="comment-modal-head">
+                <h3 id="verification-comment-title">Additional Notes:</h3>
+                <button type="button" class="comment-modal-close" onclick="closeVerificationComment()" aria-label="Close">&times;</button>
+            </div>
+            <p id="verification-comment-text"></p>
+        </div>
+    </div>
 
     <script src="/nav.js"></script>
     <script>
@@ -227,6 +279,33 @@
             `).join('');
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function openVerificationComment(button) {
+            const modal = document.getElementById('verification-comment-modal');
+            const text = document.getElementById('verification-comment-text');
+            try {
+                text.textContent = decodeURIComponent(button.dataset.comment || '');
+            } catch (_) {
+                text.textContent = button.dataset.comment || '';
+            }
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeVerificationComment() {
+            const modal = document.getElementById('verification-comment-modal');
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
         async function loadVerifications() {
             const res = await fetch('/api/admin/pending-verifications');
             const list = await res.json();
@@ -249,12 +328,14 @@
                 `;
 
                 return `
-                    <div class="item-card" id="v-card-${v.id}" data-username="${v.username}">
+                    <div class="item-card verification-card" id="v-card-${v.id}" data-username="${escapeHtml(v.username)}">
+                        ${v.submission_comments ? `<button type="button" class="submission-info-btn" data-comment="${encodeURIComponent(v.submission_comments)}" onclick="openVerificationComment(this)" aria-label="View verification comment" title="View verification comment"><img src="/assets/smallinfo.png" alt=""></button>` : ''}
                         <div style="margin-bottom: 15px;">
                             <span style="color: #888;">Submitted by:</span> <span class="b">${v.username}</span>
                             ${isOwnVerification ? '<span style="color: var(--error); margin-left:10px;">(Your Submission)</span>' : ''}
-                            <br><a href="${v.video_url}" target="_blank" style="color: var(--accent); font-size: 0.9em;">Verification Video</a>
-                            <br><a href="http://web-dashers.github.io/?id=${v.level_id}" target="_blank" style="color: var(--accent); font-size: 0.9em;">Play Level</a>
+                            <br><a href="${v.video_url}" target="_blank" rel="noopener" style="color: var(--accent); font-size: 0.9em;">Verification Video</a>
+                            ${v.raw_footage_url ? `<br><a href="${escapeHtml(v.raw_footage_url)}" target="_blank" rel="noopener" style="color: var(--accent); font-size: 0.9em;">Raw Footage</a>` : ''}
+                            <br><a href="http://web-dashers.github.io/?id=${v.level_id}" target="_blank" rel="noopener" style="color: var(--accent); font-size: 0.9em;">Play Level</a>
                         </div>
 
                         <div class="verif-grid">
@@ -410,6 +491,14 @@
             });
             location.reload();
         }
+
+        document.getElementById('verification-comment-modal').addEventListener('click', event => {
+            if (event.target === event.currentTarget) closeVerificationComment();
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeVerificationComment();
+        });
 
         async function init() {
             setupListLabels();

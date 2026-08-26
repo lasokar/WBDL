@@ -81,6 +81,26 @@
             border-color: var(--accent);
         }
 
+        .extended-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 28px 0 18px;
+            color: var(--text-muted);
+            font-family: var(--font-display);
+            font-size: 0.82em;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+        }
+
+        .extended-divider::before,
+        .extended-divider::after {
+            content: '';
+            height: 1px;
+            flex: 1;
+            background: var(--border);
+        }
+
         .demon-card {
             background: var(--surface);
             margin: 14px 0;
@@ -99,6 +119,16 @@
             cursor: default;
         }
         .demon-card:hover {
+            background: var(--surface-2);
+            border-color: var(--border);
+        }
+
+        .demon-card.completed-level {
+            background: var(--surface);
+            border-color: var(--accent);
+        }
+
+        .demon-card.completed-level:hover {
             background: var(--surface-2);
             border-color: var(--accent);
         }
@@ -452,7 +482,6 @@
             <div class="list-tab active" id="tab-main" onclick="switchListTab('main')">Demon List</div>
             <div class="list-tab" id="tab-legacy" onclick="switchListTab('legacy')">Legacy List</div>
         </div>
-
         <div id="list-container">
             <p style="text-align: center; color: #888;">Fetching levels...</p>
         </div>
@@ -471,6 +500,7 @@
         const isImpossibleList = window.location.hostname.includes('impossible');
         let allDemons = [];
         let currentListTab = 'main';
+        let completedDemonIds = new Set();
 
         function parseDateInputValue(value) {
             const raw = String(value || '').trim();
@@ -763,11 +793,10 @@
         }
 
         function getDefaultSelectedDemonId() {
-            const filteredDemons = allDemons.filter(d => {
+            let filteredDemons = allDemons.filter(d => {
                 if (currentListTab === 'main') return Number(d.position) <= 150;
                 return Number(d.position) > 150;
             });
-
             const selectableDemon = filteredDemons.find(d => !isTimeMachinePlaceholder(d) && d.id);
             return selectableDemon ? String(selectableDemon.id) : '';
         }
@@ -799,7 +828,7 @@
         function extract100thFrame(url, imgId) {
             if (!url) return;
             const video = document.createElement('video');
-            video.src = url;
+            video.src = url;   
             video.crossOrigin = 'anonymous';
             video.muted = true;
             video.playsInline = true;
@@ -846,10 +875,13 @@
             const container = document.getElementById('list-container');
             container.innerHTML = '';
 
-            const filteredDemons = allDemons.filter(d => {
+            let filteredDemons = allDemons.filter(d => {
                 if (currentListTab === 'main') return d.position <= 150;
                 return d.position > 150;
             });
+            const firstExtended = !isImpossibleList && currentListTab === 'main'
+                ? filteredDemons.find(d => Number(d.position) > 75)
+                : null;
 
             if (filteredDemons.length === 0) {
                 container.innerHTML = `<p style="text-align: center; color: var(--text-muted); margin-top: 20px;">No levels exist here...</p>`;
@@ -860,6 +892,9 @@
 
             const htmlContent = filteredDemons.map(demon => {
                 const isPlaceholder = isTimeMachinePlaceholder(demon);
+                const separatorHtml = firstExtended && String(firstExtended.id) === String(demon.id)
+                    ? '<div class="extended-divider"><span>Extended List</span></div>'
+                    : '';
                 const ytId = getYTId(demon.showcase_link);
                 let thumbUrl = '/assets/missing-thumbnail.png';
                 const imgId = `thumb-${isPlaceholder ? `placeholder-${demon.position}` : demon.id}`;
@@ -910,8 +945,9 @@
                 const showPoints = !isImpossibleList && showPlacement;
                 const rankHtml = showPlacement ? `<span class="rank">#${demon.position}</span>` : '';
 
+                const isCompleted = !isPlaceholder && completedDemonIds.has(Number(demon.id));
                 const cardHtml = `
-                    <div class="demon-card ${isPlaceholder ? 'time-machine-placeholder' : ''}">
+                    <div class="demon-card ${isPlaceholder ? 'time-machine-placeholder' : ''} ${isCompleted ? 'completed-level' : ''}">
                         <div class="thumbnail-box">
                             <img id="${imgId}" src="${thumbUrl}" alt="${demon.name} thumbnail">
                         </div>
@@ -930,7 +966,7 @@
                 `;
 
                 if (isPlaceholder) {
-                    return `<div style="text-decoration: none; color: inherit; display: block;">${cardHtml}</div>`;
+                    return `${separatorHtml}<div style="text-decoration: none; color: inherit; display: block;">${cardHtml}</div>`;
                 }
 
                 const directUrl = getDirectDemonUrl(demon.id);
@@ -939,7 +975,7 @@
                     ? `href="${embeddedUrl}" onclick="selectDemon('${demon.id}'); return false;"`
                     : `href="${directUrl}" target="_blank" rel="noopener"`;
 
-                return `<a ${linkAttrs} style="text-decoration: none; color: inherit; display: block;">${cardHtml}</a>`;
+                return `${separatorHtml}<a ${linkAttrs} style="text-decoration: none; color: inherit; display: block;">${cardHtml}</a>`;
             }).join('');
 
             container.innerHTML = htmlContent;
@@ -954,8 +990,14 @@
             if (await redirectInvalidTimeMachineDateIfNeeded()) return;
 
             try {
-                const response = await fetch(getDemonsApiUrl());
+                const [response, completedResponse] = await Promise.all([
+                    fetch(getDemonsApiUrl()),
+                    fetch('/api/records/completed-ids')
+                ]);
                 allDemons = await response.json();
+                if (!response.ok || !Array.isArray(allDemons)) throw new Error('Could not load levels.');
+                const completedIds = completedResponse.ok ? await completedResponse.json() : [];
+                completedDemonIds = new Set((Array.isArray(completedIds) ? completedIds : []).map(Number));
                 updateTimeMachineStatus();
 
                 const tabsContainer = document.getElementById('list-tabs-container');

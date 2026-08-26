@@ -294,19 +294,39 @@ async function queryCurrentDemonSnapshotRows(list) {
                 WHEN $1 = 'impossible' THEN d.showcase_url
                 ELSE (
                     SELECT r.video_url 
-                    FROM records r 
+                    FROM records r
+                    JOIN users ru ON ru.id = r.user_id
                     WHERE r.demon_id = d.id 
                       AND r.status = 'accepted' 
                       AND r.percentage = 100
+                      AND COALESCE(ru.leaderboard_banned, FALSE) = FALSE
                     ORDER BY r.id ASC 
                     LIMIT 1
                 )
             END AS showcase_link,
+            CASE
+                WHEN $1 = 'impossible' THEN d.showcase_url
+                ELSE (
+                    SELECT r.video_url
+                    FROM records r
+                    JOIN users ru ON ru.id = r.user_id
+                    WHERE r.demon_id = d.id
+                      AND r.status = 'accepted'
+                      AND r.percentage = 100
+                      AND r.verification_id IS NOT NULL
+                      AND COALESCE(ru.leaderboard_banned, FALSE) = FALSE
+                    ORDER BY r.id ASC
+                    LIMIT 1
+                )
+            END AS verification_video_url,
             COALESCE(
                 (
                     SELECT json_agg(json_build_object('percentage', r.percentage))
                     FROM records r
-                    WHERE r.demon_id = d.id AND r.status = 'accepted'
+                    JOIN users ru ON ru.id = r.user_id
+                    WHERE r.demon_id = d.id
+                      AND r.status = 'accepted'
+                      AND COALESCE(ru.leaderboard_banned, FALSE) = FALSE
                 ),
                 '[]'::json
             ) AS records
@@ -403,6 +423,21 @@ function normalizeEnjoymentRating(value, percentage) {
         return null;
     }
     return parsed;
+}
+
+function normalizePersonalPlacement(value, percentage) {
+    if (value === '' || value === null || value === undefined) return null;
+    const parsed = Number(value);
+    if (Number(percentage) !== 100 || !Number.isInteger(parsed) || parsed < 1 || parsed > 150) {
+        return null;
+    }
+    return parsed;
+}
+
+function hasMoreThanTwoDecimalPlaces(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return false;
+    return Math.abs((numeric * 100) - Math.round(numeric * 100)) > 1e-9;
 }
 
 function isValidHttpUrl(value) {
@@ -625,6 +660,11 @@ async function getBadgeMetrics(userId, list, db = pool) {
                 WHERE id = $1
             ) AS joined_at,
             (
+                SELECT COALESCE(leaderboard_banned, FALSE)
+                FROM users
+                WHERE id = $1
+            ) AS leaderboard_banned,
+            (
                 SELECT COUNT(DISTINCT r.demon_id)::int
                 FROM records r
                 JOIN demons d ON d.id = r.demon_id
@@ -638,9 +678,11 @@ async function getBadgeMetrics(userId, list, db = pool) {
             (
                 SELECT COUNT(*)::int
                 FROM verifications v
+                JOIN users vu ON vu.id = v.user_id
                 WHERE v.user_id = $1
                   AND v.status = 'accepted'
                   AND v.list_type = $2
+                  AND COALESCE(vu.leaderboard_banned, FALSE) = FALSE
             ) AS verified_levels,
             (
                 SELECT COUNT(DISTINCT r.demon_id)::int
@@ -685,6 +727,7 @@ async function getBadgeMetrics(userId, list, db = pool) {
     const row = result.rows[0] || {};
     return {
         joined_at: row.joined_at || null,
+        leaderboard_banned: Boolean(row.leaderboard_banned),
         completed_levels: Number(row.completed_levels) || 0,
         verified_levels: Number(row.verified_levels) || 0,
         completed_top_25: Number(row.completed_top_25) || 0,
@@ -875,11 +918,12 @@ async function evaluateUserBadges(userId, list, db = pool) {
             .map(tier => {
                 const tierId = Number(tier.id);
                 const stored = existing.get(`${group.id}:${tierId}:${badgeListType}`);
+                const verificationBadgeSuppressed = group.id === 'verified-levels' && metrics.leaderboard_banned;
                 return {
                     ...tier,
                     id: tierId,
                     iconPath: tier.iconPath || group.iconPath || '/assets/icon.png',
-                    unlocked: Boolean(stored),
+                    unlocked: !verificationBadgeSuppressed && Boolean(stored),
                     unlockedAt: stored?.unlockedAt || stored?.unlocked_at || null,
                 };
             })
@@ -959,6 +1003,9 @@ app.get('/demon/:id', (req, res) => {
 });
 app.get('/submit', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'submit.html'));
+});
+app.get('/roulette', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'roulette.html'));
 });
 app.get('/profile', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'profile.html'));
@@ -1385,13 +1432,23 @@ app.post('/api/submit', async (req, res) => {
         return res.status(401).json({ error: "You must be logged in!" });
     }
 
-    const { demonId, percentage, videoUrl, enjoymentRating } = req.body;
-    const newPercent = parseInt(percentage);
-    const normalizedEnjoyment = normalizeEnjoymentRating(enjoymentRating, newPercent);
-    
+    const { demonId, percentage, videoUrl, enjoymentRating, personalPlacement } = req.body;
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const newPercent = list === 'impossible'
+        ? Math.round(Number.parseFloat(percentage) * 100) / 100
+        : Number.parseInt(percentage, 10);
+    const normalizedEnjoyment = normalizeEnjoymentRating(enjoymentRating, newPercent);
+    const normalizedPersonalPlacement = normalizePersonalPlacement(personalPlacement, newPercent);
+    const comments = cleanProfileText(req.body.comments, 1000);
+    if (String(req.body.comments ?? '').trim().length > 1000) {
+        return res.status(400).json({ error: "Comments are limited to 1000 characters." });
+    }
 
-    if (isNaN(newPercent) || newPercent <= 0) {
+    if (list === 'impossible' && hasMoreThanTwoDecimalPlaces(percentage)) {
+        return res.status(400).json({ error: "WBiLL percentages are limited to 2 decimal places." });
+    }
+
+    if (!Number.isFinite(newPercent) || newPercent <= 0) {
         return res.status(400).json({ error: "Percentage must be a valid number greater than 0%." });
     }
 
@@ -1399,8 +1456,20 @@ app.post('/api/submit', async (req, res) => {
         return res.status(400).json({ error: "Percentage cannot be higher than 100%." });
     }
 
+    if (list === 'impossible' && newPercent === 100) {
+        return res.status(400).json({ error: "You cannot submit a 100% record to the ILL. Submit a verification to the primary list instead." });
+    }
+
+    if (list !== 'impossible' && !Number.isInteger(newPercent)) {
+        return res.status(400).json({ error: "Main-list percentages must be whole numbers." });
+    }
+
     if (enjoymentRating !== '' && enjoymentRating !== null && enjoymentRating !== undefined && normalizedEnjoyment === null) {
         return res.status(400).json({ error: "Enjoyment rating must be between 1 and 10 and can only be used for 100% records." });
+    }
+
+    if (personalPlacement !== '' && personalPlacement !== null && personalPlacement !== undefined && normalizedPersonalPlacement === null) {
+        return res.status(400).json({ error: "Personal placement must be a whole number from 1 to 150 and can only be used for 100% records." });
     }
 
     const urlPattern = new RegExp('^(https?:\\/\\/)?' + 
@@ -1464,9 +1533,9 @@ app.post('/api/submit', async (req, res) => {
             const updatedRecordId = Number(existingRecord.rows[0].id);
             await pool.query(
                 `UPDATE records
-                 SET percentage = $1, video_url = $2, enjoyment_rating = $3, status = 'pending'
-                 WHERE id = $4`,
-                [newPercent, videoUrl, normalizedEnjoyment, updatedRecordId]
+                 SET percentage = $1, video_url = $2, enjoyment_rating = $3, personal_placement = $4, submission_comments = $5, status = 'pending'
+                 WHERE id = $6`,
+                [newPercent, videoUrl, normalizedEnjoyment, normalizedPersonalPlacement, comments || null, updatedRecordId]
             );
             await notifySubmissionSubscribers({
                 recordId: updatedRecordId,
@@ -1486,10 +1555,10 @@ app.post('/api/submit', async (req, res) => {
         }
 
         const insertedRecord = await pool.query(
-            `INSERT INTO records (user_id, demon_id, percentage, video_url, enjoyment_rating, list_type, status)
-             VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+            `INSERT INTO records (user_id, demon_id, percentage, video_url, enjoyment_rating, personal_placement, submission_comments, list_type, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
              RETURNING id`,
-            [req.session.userId, demonId, newPercent, videoUrl, normalizedEnjoyment, list]
+            [req.session.userId, demonId, newPercent, videoUrl, normalizedEnjoyment, normalizedPersonalPlacement, comments || null, list]
         );
         await notifySubmissionSubscribers({
             recordId: Number(insertedRecord.rows[0].id),
@@ -1516,7 +1585,7 @@ app.get('/api/records/pending', async (req, res) => {
 
     try {
         const result = await pool.query(`
-            SELECT r.id, r.demon_id, r.percentage, r.video_url, r.enjoyment_rating,
+            SELECT r.id, r.demon_id, r.percentage, r.video_url, r.enjoyment_rating, r.personal_placement, r.submission_comments,
                    r.created_at, d.name AS demon_name, d.position, d.requirement
             FROM records r
             JOIN demons d ON d.id = r.demon_id
@@ -1530,22 +1599,62 @@ app.get('/api/records/pending', async (req, res) => {
     }
 });
 
+app.get('/api/records/completed-ids', async (req, res) => {
+    if (!req.session.userId) return res.json([]);
+    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+
+    try {
+        const result = await pool.query(`
+            SELECT DISTINCT demon_id
+            FROM records
+            WHERE user_id = $1
+              AND list_type = $2
+              AND status = 'accepted'
+              AND percentage = 100
+        `, [req.session.userId, list]);
+        res.json(result.rows.map(row => Number(row.demon_id)).filter(Number.isFinite));
+    } catch (err) {
+        console.error('Completed level id fetch error:', err);
+        res.status(500).json({ error: 'Could not load completed levels.' });
+    }
+});
+
 app.patch('/api/records/pending/:recordId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
     const recordId = parseInt(req.params.recordId, 10);
-    const percentage = parseInt(req.body.percentage, 10);
+    const percentage = list === 'impossible'
+        ? Math.round(Number.parseFloat(req.body.percentage) * 100) / 100
+        : Number.parseInt(req.body.percentage, 10);
     const videoUrl = String(req.body.videoUrl || '').trim();
     const enjoymentRating = normalizeEnjoymentRating(req.body.enjoymentRating, percentage);
+    const personalPlacement = normalizePersonalPlacement(req.body.personalPlacement, percentage);
+    const comments = cleanProfileText(req.body.comments, 1000);
+    if (String(req.body.comments ?? '').trim().length > 1000) {
+        return res.status(400).json({ error: "Comments are limited to 1000 characters." });
+    }
 
-    if (!Number.isInteger(recordId) || !Number.isInteger(percentage) || percentage < 1 || percentage > 100) {
+    if (list === 'impossible' && hasMoreThanTwoDecimalPlaces(req.body.percentage)) {
+        return res.status(400).json({ error: "WBiLL percentages are limited to 2 decimal places." });
+    }
+
+    if (!Number.isInteger(recordId) || !Number.isFinite(percentage) || percentage < 1 || percentage > 100) {
         return res.status(400).json({ error: "Percentage must be between 1 and 100." });
+    }
+    if (list === 'impossible' && percentage === 100) {
+        return res.status(400).json({ error: "You cannot submit a 100% record to the ILL. Submit a verification to the primary list instead." });
+    }
+    if (list !== 'impossible' && !Number.isInteger(percentage)) {
+        return res.status(400).json({ error: "Main-list percentages must be whole numbers." });
     }
     if (!isValidHttpUrl(videoUrl)) {
         return res.status(400).json({ error: "Please enter a valid video URL." });
     }
     if (req.body.enjoymentRating !== '' && req.body.enjoymentRating !== null && req.body.enjoymentRating !== undefined && enjoymentRating === null) {
         return res.status(400).json({ error: "Enjoyment rating must be between 1 and 10 and can only be used for 100% records." });
+    }
+    if (req.body.personalPlacement !== '' && req.body.personalPlacement !== null && req.body.personalPlacement !== undefined && personalPlacement === null) {
+        return res.status(400).json({ error: "Personal placement must be a whole number from 1 to 150 and can only be used for 100% records." });
     }
 
     try {
@@ -1572,9 +1681,9 @@ app.patch('/api/records/pending/:recordId', async (req, res) => {
 
         await pool.query(`
             UPDATE records
-            SET percentage = $1, video_url = $2, enjoyment_rating = $3
-            WHERE id = $4
-        `, [percentage, videoUrl, enjoymentRating, recordId]);
+            SET percentage = $1, video_url = $2, enjoyment_rating = $3, personal_placement = $4, submission_comments = $5
+            WHERE id = $6
+        `, [percentage, videoUrl, enjoymentRating, personalPlacement, comments || null, recordId]);
         res.json({ message: "Pending record updated." });
     } catch (err) {
         console.error('Pending record update error:', err);
@@ -1942,7 +2051,7 @@ app.post('/api/owner/users/:userId/role', isOwner, async (req, res) => {
             reason: reason || null,
             listType: list,
             subject: `You have been ${roleChangeType} to ${roleLabel}`,
-            body: `Your WBDL account role was changed to **${roleLabel}** by the owner.${reason ? `\n\n**Reason:** ${reason}` : ''}`,
+            body: `Your WBDL account role was changed to **${roleLabel}**.${reason ? `\n\n**Reason:** ${reason}` : ''}`,
         });
 
         for (const listType of ['primary', 'impossible']) {
@@ -2007,15 +2116,22 @@ app.patch('/api/admin/users/:userId/username', isAdmin, async (req, res) => {
 app.patch('/api/admin/users/:userId/records/:recordId', isAdmin, async (req, res) => {
     const targetUserId = parseInt(req.params.userId, 10);
     const recordId = parseInt(req.params.recordId, 10);
-    const percentage = parseInt(req.body.percentage, 10);
+    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const percentage = list === 'impossible'
+        ? Math.round(Number.parseFloat(req.body.percentage) * 100) / 100
+        : Number.parseInt(req.body.percentage, 10);
     const videoUrl = String(req.body.videoUrl || '').trim();
     const status = String(req.body.status || '').toLowerCase();
     const reason = cleanProfileText(req.body.reason, 1000);
     const enjoymentRating = normalizeEnjoymentRating(req.body.enjoymentRating, percentage);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+
+    if (list === 'impossible' && hasMoreThanTwoDecimalPlaces(req.body.percentage)) {
+        return res.status(400).json({ error: "WBiLL percentages are limited to 2 decimal places." });
+    }
 
     if (!Number.isInteger(targetUserId) || !Number.isInteger(recordId)) return res.status(400).json({ error: "Invalid record." });
-    if (!Number.isInteger(percentage) || percentage < 1 || percentage > 100) return res.status(400).json({ error: "Percentage must be between 1 and 100." });
+    if (!Number.isFinite(percentage) || percentage < 1 || percentage > 100) return res.status(400).json({ error: "Percentage must be between 1 and 100." });
+    if (list !== 'impossible' && !Number.isInteger(percentage)) return res.status(400).json({ error: "Main-list percentages must be whole numbers." });
     if (!isValidHttpUrl(videoUrl)) return res.status(400).json({ error: "Please enter a valid video URL." });
     if (!['pending', 'accepted', 'rejected'].includes(status)) return res.status(400).json({ error: "Invalid status." });
     if (req.body.enjoymentRating !== '' && req.body.enjoymentRating !== null && req.body.enjoymentRating !== undefined && enjoymentRating === null) {
@@ -2202,6 +2318,7 @@ app.get('/api/admin/pending', isMod, async (req, res) => {
 
 app.post('/api/admin/update-record', isMod, async (req, res) => {
     const { recordId, status, reason } = req.body;
+    const note = cleanProfileText(req.body.note, 2000);
     const actorId = req.session.userId;
     const activeSubdomainList = req.currentList === 'impossible' ? 'impossible' : 'primary';
 
@@ -2268,7 +2385,7 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
 
         const accepted = status === 'accepted';
         const body = accepted
-            ? `Your **${record.percentage}%** record for **${record.demon_name}** was accepted.`
+            ? `Your **${record.percentage}%** record for **${record.demon_name}** was accepted.${note ? `\n\n**Note from moderator:** ${note}` : ''}`
             : `Your **${record.percentage}%** record for **${record.demon_name}** was rejected.${reason ? `\n\n**Reason:** ${reason}` : ''}`;
 
         await createInboxNotification(client, {
@@ -2276,7 +2393,7 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
             actorId,
             recordId,
             type: status,
-            reason: reason || null,
+            reason: accepted ? (note || null) : (reason || null),
             listType: record.list_type,
             subject: `Record ${status}: ${record.demon_name}`,
             body,
@@ -2632,6 +2749,92 @@ app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
     }
 });
 
+app.get('/api/verifications/pending', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+
+    try {
+        const result = await pool.query(`
+            SELECT id, level_name, level_author, level_id, video_url, raw_footage_url,
+                   placement_opinion, enjoyment_rating, submission_comments
+            FROM verifications
+            WHERE user_id = $1 AND status = 'pending' AND list_type = $2
+            ORDER BY id DESC
+        `, [req.session.userId, list]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Pending verification fetch error:', err);
+        res.status(500).json({ error: 'Could not load pending verifications.' });
+    }
+});
+
+app.patch('/api/verifications/pending/:verifId', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const verifId = Number.parseInt(req.params.verifId, 10);
+    const name = cleanProfileText(req.body.name, 20);
+    const author = cleanProfileText(req.body.author, 100);
+    const levelId = String(req.body.levelId ?? '').trim();
+    const opinion = Number.parseInt(req.body.opinion, 10);
+    const videoUrl = fixVideoUrl(String(req.body.videoUrl || '').trim());
+    const rawFootageUrl = String(req.body.rawFootageUrl || '').trim();
+    const enjoymentRating = list === 'impossible' ? null : normalizeEnjoymentRating(req.body.enjoymentRating, 100);
+    const comments = cleanProfileText(req.body.comments, 1000);
+    if (String(req.body.comments ?? '').trim().length > 1000) {
+        return res.status(400).json({ error: "Comments are limited to 1000 characters." });
+    }
+
+    if (!Number.isInteger(verifId)) return res.status(400).json({ error: 'Invalid verification.' });
+    if (!name || !author || !levelId) return res.status(400).json({ error: 'Level name, creator, and ID are required.' });
+    if (!Number.isInteger(opinion) || opinion < 1 || opinion > 150) return res.status(400).json({ error: 'Placement must be between 1 and 150.' });
+    if (!isValidHttpUrl(videoUrl)) return res.status(400).json({ error: 'Please enter a valid verification video URL.' });
+    if (rawFootageUrl && !isValidHttpUrl(rawFootageUrl)) return res.status(400).json({ error: 'Please enter a valid raw-footage URL.' });
+    if (list !== 'impossible' && req.body.enjoymentRating !== '' && req.body.enjoymentRating != null && enjoymentRating === null) {
+        return res.status(400).json({ error: 'Enjoyment rating must be between 1 and 10.' });
+    }
+
+    try {
+        const result = await pool.query(`
+            UPDATE verifications
+            SET level_name = $1,
+                level_author = $2,
+                level_id = $3,
+                video_url = $4,
+                raw_footage_url = $5,
+                placement_opinion = $6,
+                enjoyment_rating = $7,
+                submission_comments = $8
+            WHERE id = $9 AND user_id = $10 AND status = 'pending' AND list_type = $11
+            RETURNING id
+        `, [name, author, levelId, videoUrl, rawFootageUrl || null, opinion, enjoymentRating, comments || null, verifId, req.session.userId, list]);
+        if (!result.rows.length) return res.status(404).json({ error: 'Pending verification not found.' });
+        res.json({ message: 'Pending verification updated.' });
+    } catch (err) {
+        console.error('Pending verification update error:', err);
+        res.status(500).json({ error: 'Could not update pending verification.' });
+    }
+});
+
+app.delete('/api/verifications/pending/:verifId', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const verifId = Number.parseInt(req.params.verifId, 10);
+    if (!Number.isInteger(verifId)) return res.status(400).json({ error: 'Invalid verification.' });
+
+    try {
+        const result = await pool.query(`
+            DELETE FROM verifications
+            WHERE id = $1 AND user_id = $2 AND status = 'pending' AND list_type = $3
+            RETURNING id
+        `, [verifId, req.session.userId, list]);
+        if (!result.rows.length) return res.status(404).json({ error: 'Pending verification not found.' });
+        res.json({ message: 'Pending verification cancelled.' });
+    } catch (err) {
+        console.error('Pending verification delete error:', err);
+        res.status(500).json({ error: 'Could not cancel pending verification.' });
+    }
+});
+
 app.get('/api/admin/pending-verifications', isAdmin, async (req, res) => {
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
 
@@ -2662,7 +2865,7 @@ app.post('/api/admin/reject-verification', isAdmin, async (req, res) => {
         const actorRole = actorQuery.rows[0]?.role;
 
         const verifQuery = await client.query(
-            'SELECT user_id, level_name, list_type FROM verifications WHERE id = $1 FOR UPDATE',
+            'SELECT user_id, level_name, list_type, status FROM verifications WHERE id = $1 FOR UPDATE',
             [verifId]
         );
         if (!verifQuery.rows.length) {
@@ -2670,7 +2873,11 @@ app.post('/api/admin/reject-verification', isAdmin, async (req, res) => {
             return res.status(404).json({ error: "Verification not found" });
         }
 
-        const { user_id, level_name, list_type } = verifQuery.rows[0];
+        const { user_id, level_name, list_type, status: verificationStatus } = verifQuery.rows[0];
+        if (verificationStatus !== 'pending') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'This verification has already been reviewed.' });
+        }
         if (list_type !== activeSubdomainList) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: "This request does not belong to the active list." });
@@ -2682,7 +2889,7 @@ app.post('/api/admin/reject-verification', isAdmin, async (req, res) => {
         }
 
         await client.query(
-            'UPDATE verifications SET status = $1, rejection_reason = $2 WHERE id = $3',
+            "UPDATE verifications SET status = $1, rejection_reason = $2 WHERE id = $3 AND status = 'pending'",
             ['rejected', reason || null, verifId]
         );
 
@@ -2721,7 +2928,7 @@ app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
         const actorRole = actorQuery.rows[0]?.role;
 
         const verifQuery = await client.query(
-            'SELECT user_id, video_url, list_type, level_name, enjoyment_rating FROM verifications WHERE id = $1 FOR UPDATE',
+            'SELECT user_id, video_url, list_type, level_name, enjoyment_rating, placement_opinion, submission_comments, status FROM verifications WHERE id = $1 FOR UPDATE',
             [verifId]
         );
         if (!verifQuery.rows.length) {
@@ -2733,6 +2940,11 @@ app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
         userId = verification.user_id;
         listType = verification.list_type;
 
+        if (verification.status !== 'pending') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'This verification has already been reviewed.' });
+        }
+
         if (verification.list_type !== activeSubdomainList) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: "This request does not belong to the active list." });
@@ -2743,7 +2955,7 @@ app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
             return res.status(403).json({ error: "You cannot review your own verification." });
         }
 
-        await client.query('UPDATE verifications SET status = $1 WHERE id = $2', ['accepted', verifId]);
+        await client.query("UPDATE verifications SET status = $1 WHERE id = $2 AND status = 'pending'", ['accepted', verifId]);
 
         let recordId = null;
         if (verification.list_type === 'impossible') {
@@ -2758,8 +2970,8 @@ app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
 
             const newRecord = await client.query(`
                 INSERT INTO records
-                    (user_id, demon_id, percentage, video_url, status, list_type, accepted_position, enjoyment_rating)
-                VALUES ($1, $2, 100, $3, 'accepted', $4, $5, $6)
+                    (user_id, demon_id, percentage, video_url, status, list_type, accepted_position, enjoyment_rating, personal_placement, verification_id, submission_comments)
+                VALUES ($1, $2, 100, $3, 'accepted', $4, $5, $6, $7, $8, $9)
                 RETURNING id
             `, [
                 verification.user_id,
@@ -2768,6 +2980,9 @@ app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
                 verification.list_type,
                 demon.position,
                 verification.enjoyment_rating,
+                verification.placement_opinion,
+                verifId,
+                verification.submission_comments || null,
             ]);
             recordId = newRecord.rows[0].id;
         }
@@ -2833,6 +3048,7 @@ app.get('/api/profile/:username', async (req, res) => {
                 r.video_url,
                 r.enjoyment_rating,
                 r.accepted_position,
+                (r.verification_id IS NOT NULL) AS from_verification,
                 d.name,
                 d.position,
                 d.requirement,
@@ -2840,11 +3056,13 @@ app.get('/api/profile/:username', async (req, res) => {
                 (
                     SELECT COUNT(*)
                     FROM records r2
+                    JOIN users u2 ON u2.id = r2.user_id
                     WHERE r2.demon_id = r.demon_id
                       AND r2.status = 'accepted'
                       AND r2.percentage = 100
                       AND r2.list_type = $2
                       AND r2.id < r.id
+                      AND COALESCE(u2.leaderboard_banned, FALSE) = FALSE
                 ) AS completion_status
             FROM records r
             JOIN demons d ON r.demon_id = d.id
@@ -3175,7 +3393,10 @@ app.get('/api/demons/:id', async (req, res) => {
                    users.glow
             FROM records 
             JOIN users ON records.user_id = users.id 
-            WHERE records.demon_id = $1 AND records.status = 'accepted' AND records.list_type = $2
+            WHERE records.demon_id = $1
+              AND records.status = 'accepted'
+              AND records.list_type = $2
+              AND COALESCE(users.leaderboard_banned, FALSE) = FALSE
             ORDER BY records.percentage DESC, records.id ASC
         `, [demonId, list]);
 
@@ -3185,9 +3406,15 @@ app.get('/api/demons/:id', async (req, res) => {
             showcase_link = demon.showcase_url;
         } else {
             const firstVictorResult = await pool.query(`
-                SELECT video_url FROM records 
-                WHERE demon_id = $1 AND status = 'accepted' AND list_type = $2 AND percentage = 100
-                ORDER BY id ASC LIMIT 1
+                SELECT r.video_url
+                FROM records r
+                JOIN users u ON u.id = r.user_id
+                WHERE r.demon_id = $1
+                  AND r.status = 'accepted'
+                  AND r.list_type = $2
+                  AND r.percentage = 100
+                  AND COALESCE(u.leaderboard_banned, FALSE) = FALSE
+                ORDER BY r.id ASC LIMIT 1
             `, [demonId, list]);
 
             showcase_link = firstVictorResult.rows.length > 0 
@@ -3812,6 +4039,11 @@ function fixVideoUrl(url) {
 
 app.post('/api/submit-verification', async (req, res) => {
     const { name, author, levelId, opinion, videoUrl, enjoymentRating } = req.body;
+    const rawFootageUrl = String(req.body.rawFootageUrl || '').trim();
+    const comments = cleanProfileText(req.body.comments, 1000);
+    if (String(req.body.comments ?? '').trim().length > 1000) {
+        return res.status(400).json({ error: "Comments are limited to 1000 characters." });
+    }
     const userId = req.session.userId;
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
 
@@ -3826,6 +4058,12 @@ app.post('/api/submit-verification', async (req, res) => {
         ? null
         : normalizeEnjoymentRating(enjoymentRating, 100);
     const fixedVideoUrl = fixVideoUrl(videoUrl);
+    if (!isValidHttpUrl(fixedVideoUrl)) {
+        return res.status(400).json({ error: "Please enter a valid verification video URL." });
+    }
+    if (rawFootageUrl && !isValidHttpUrl(rawFootageUrl)) {
+        return res.status(400).json({ error: "Please enter a valid raw-footage URL." });
+    }
     if (!Number.isInteger(placementOpinion) || placementOpinion < 1 || placementOpinion > 150) {
         return res.status(400).json({ error: "You can't submit for the legacy list." });
     }
@@ -3840,9 +4078,9 @@ app.post('/api/submit-verification', async (req, res) => {
     try {
         await pool.query(
             `INSERT INTO verifications
-                (user_id, level_name, level_author, level_id, video_url, placement_opinion, list_type, enjoyment_rating)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [userId, name, author, levelId, fixedVideoUrl, placementOpinion, list, normalizedEnjoyment]
+                (user_id, level_name, level_author, level_id, video_url, raw_footage_url, placement_opinion, list_type, enjoyment_rating, submission_comments)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [userId, name, author, levelId, fixedVideoUrl, rawFootageUrl || null, placementOpinion, list, normalizedEnjoyment, comments || null]
         );
         res.json({ message: "Verification submitted successfully!" });
     } catch (err) {
