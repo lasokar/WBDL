@@ -89,6 +89,21 @@
         .message-body pre { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 13px; overflow-x: auto; }
         .message-body pre code { border: 0; padding: 0; }
         .message-body blockquote { margin: 0 0 13px; padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--bg); color: var(--text-muted); }
+
+        .message-actions { display: flex; justify-content: flex-end; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .message-delete {
+            padding: 9px 15px;
+            border: 1px solid var(--danger);
+            border-radius: var(--radius-sm);
+            background: transparent;
+            color: var(--danger);
+            font: inherit;
+            font-size: .86rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .message-delete:hover { background: var(--danger); color: #fff; }
+        .message-delete:disabled { opacity: .55; cursor: wait; }
     </style>
 </head>
 <body>
@@ -107,6 +122,9 @@
             <h2 id="message-subject">Notification</h2>
             <div id="message-meta" class="message-meta"></div>
             <div id="message-body" class="message-body"></div>
+            <div class="message-actions">
+                <button type="button" id="message-delete" class="message-delete" onclick="deleteOpenNotification()">Delete</button>
+            </div>
         </article>
     </div>
 
@@ -116,6 +134,7 @@
         if (isImpossibleList) document.body.classList.add('impossible-list');
 
         let inboxMessages = [];
+        let openNotificationId = null;
 
         function escapeHtml(value) {
             return String(value ?? '')
@@ -224,6 +243,7 @@
         async function openMessage(id) {
             const message = inboxMessages.find(item => Number(item.id) === Number(id));
             if (!message) return;
+            openNotificationId = Number(message.id);
 
             document.getElementById('message-subject').innerText = message.subject || 'Notification';
             document.getElementById('message-meta').innerText = `${formatDate(message.created_at)} • Sent by ${message.sent_by || 'WBDL'}`;
@@ -243,6 +263,32 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ notificationId: message.id })
                 }).catch(() => {});
+            }
+        }
+
+        async function deleteOpenNotification() {
+            if (!Number.isInteger(openNotificationId)) return;
+            if (!confirm('Delete this notification?')) return;
+
+            const id = openNotificationId;
+            const button = document.getElementById('message-delete');
+            button.disabled = true;
+            try {
+                const res = await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Could not delete notification.');
+
+                inboxMessages = inboxMessages.filter(message => Number(message.id) !== id);
+                document.getElementById(`notification-${id}`)?.remove();
+                closeMessage();
+
+                if (!inboxMessages.length) {
+                    document.getElementById('notifications-full-list').innerHTML = '<div class="noti-empty">You have no notifications yet.</div>';
+                }
+            } catch (err) {
+                alert(err.message);
+            } finally {
+                button.disabled = false;
             }
         }
 
@@ -266,6 +312,7 @@
             const overlay = document.getElementById('message-overlay');
             overlay.classList.remove('visible');
             overlay.setAttribute('aria-hidden', 'true');
+            openNotificationId = null;
         }
 
         document.getElementById('message-overlay').addEventListener('click', event => {

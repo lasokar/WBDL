@@ -321,6 +321,40 @@ module.exports = function registerDiscord(app, pool) {
         }
     };
 
+
+    app.locals.sendDiscordVerificationNotification = async ({
+        discordIds = [],
+        submitterName,
+        levelName,
+        levelAuthor,
+        levelId,
+        position,
+        videoUrl,
+    }) => {
+        if (!cfg().botToken) {
+            console.warn('Discord verification notification skipped: bot token is not configured.');
+            return;
+        }
+
+        const uniqueDiscordIds = [...new Set(discordIds.map(String).filter(Boolean))];
+        const placement = Number.isFinite(Number(position)) ? `#${Number(position)}` : 'Unknown';
+
+        for (const discordId of uniqueDiscordIds) {
+            const content = `<@${discordId}> **New WBDL verification submission**
+**Player:** ${escapeDiscordText(submitterName)}
+**Level:** ${escapeDiscordText(levelName)} by ${escapeDiscordText(levelAuthor)}
+**Placement opinion:** ${placement}
+**Level ID:** ${escapeDiscordText(levelId)}
+**Video:** ${videoUrl}`;
+            try {
+                await sendDirectMessage(discordId, content);
+            } catch (err) {
+                console.error(`Discord verification DM failed for ${discordId}:`, err.message);
+            }
+            await sleep(150);
+        }
+    };
+
     app.get('/api/discord/link', (req, res) => {
         if (!req.session.userId) return res.redirect('/login.html');
         if (!isConfigured()) return res.status(503).send('Discord integration is not configured.');

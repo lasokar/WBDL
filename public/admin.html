@@ -149,7 +149,98 @@
         .comment-modal-close { background: transparent; color: var(--text-muted); padding: 4px 8px; font-size: 1.4rem; }
         .comment-modal-close:hover { color: var(--danger); }
         #verification-comment-text { margin: 0; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .mod-leaderboard-controls {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin: 18px 0 20px;
+        }
+        .mod-leaderboard-filter { min-width: 180px; flex: 0 1 220px; }
+        .mod-leaderboard-filter select { margin-bottom: 0; }
+        .staff-leaderboard-section + .staff-leaderboard-section { margin-top: 30px; }
+        .staff-leaderboard-section h3 { margin: 0 0 8px; font-size: 1.05em; }
+        .mod-leaderboard-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+        .mod-leaderboard-table { width: 100%; border-collapse: collapse; min-width: 560px; }
+        .mod-leaderboard-table th,
+        .mod-leaderboard-table td { padding: 13px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+        .mod-leaderboard-table th { color: var(--text-muted); font-size: .72em; text-transform: uppercase; letter-spacing: .8px; background: var(--bg); }
+        .mod-leaderboard-table tbody tr:last-child td { border-bottom: 0; }
+        .mod-leaderboard-table .number-cell { text-align: right; font-variant-numeric: tabular-nums; }
+        .staff-player-cell { display: flex; align-items: center; gap: 9px; min-width: 0; }
+        .staff-player-link { color: var(--text); text-decoration: none; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+        .staff-player-link:hover { color: var(--accent); }
+        .staff-role-badge { width: 21px; height: 21px; object-fit: contain; flex: 0 0 21px; }
+        .user-icon-host { width: 34px; height: 34px; min-width: 34px; display: inline-flex; align-items: center; justify-content: center; }
+        .user-icon-host .gd-icon-canvas { width: 30px; height: 30px; max-width: 30px; max-height: 30px; object-fit: contain; image-rendering: auto; }
+        .mod-leaderboard-summary { margin: 0 0 12px; color: var(--text-muted); font-size: .85em; }
+
+        .verification-panel { position: relative; }
+        .admin-verification-options-btn {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            padding: 0;
+            background: transparent;
+            border: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .admin-verification-options-btn img { width: 45px; height: 45px; object-fit: contain; display: block; }
+        .notification-options-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,.78);
+            z-index: 1100;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .notification-options-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            width: min(440px, 100%);
+            padding: 24px;
+            box-sizing: border-box;
+            box-shadow: 0 10px 30px rgba(0,0,0,.5);
+        }
+        .notification-options-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+        .notification-options-header h3 { margin: 0; font-size: 1.2em; }
+        .notification-options-close { background: none; border: 0; color: var(--text-muted); font-size: 1.4em; cursor: pointer; padding: 0; line-height: 1; }
+        .notification-options-close:hover { color: var(--error); }
+        .notification-settings { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+        .notification-toggle {
+            width: auto;
+            min-height: 28px;
+            padding: 0;
+            margin: 0;
+            border: 0;
+            background: transparent;
+            color: var(--text);
+            display: inline-flex;
+            align-items: center;
+            align-self: flex-start;
+            gap: 7px;
+            font-family: var(--font-body);
+            font-weight: 900;
+            box-shadow: none;
+        }
+        .notification-toggle:hover, .notification-toggle:focus, .notification-toggle:active { background: transparent; }
+        .notification-toggle img { width: 28px; height: 28px; object-fit: contain; display: block; }
+        .notification-range-wrap { width: 100%; margin-top: 6px; }
+        .notification-range-wrap label { display: block; margin-bottom: 4px; text-transform: none; letter-spacing: 0; font-size: .84em; }
+        .notification-range-wrap input[type="range"] { width: 100%; padding: 0; margin: 8px 0 2px; border: 0; accent-color: var(--accent); }
+        .notification-settings-message { min-height: 1.2em; color: var(--text-muted); font-size: .82rem; }
         .hidden { display: none !important; }
+        #verification-notification-range {
+            direction: rtl;
+        }
     </style>
 </head>
 <body>
@@ -163,6 +254,7 @@
         <div class="tabs">
             <div class="tab active" onclick="openTab(event, 'levels-tab')">Manage Levels</div>
             <div class="tab" id="verif-tab-button" onclick="openTab(event, 'verif-tab')">Pending Levels</div>
+            <div class="tab" onclick="openTab(event, 'moderator-leaderboard-tab')">Staff Leaderboard</div>
         </div>
 
         <section id="levels-tab" class="tab-content active">
@@ -197,11 +289,63 @@
             <div id="admin-demon-list">Loading list...</div>
         </section>
 
-        <section id="verif-tab" class="tab-content">
+        <section id="verif-tab" class="tab-content verification-panel">
+            <button type="button" class="admin-verification-options-btn" onclick="openVerificationNotificationOptions()" aria-label="Verification notification options" title="Options">
+                <img src="/assets/settings-uhd.png" alt="">
+            </button>
             <h2 id="verif-tab-title">New Levels</h2>
             <div id="pending-verifications">Loading levels...</div>
         </section>
+
+        <section id="moderator-leaderboard-tab" class="tab-content">
+            <h2>Staff Leaderboard</h2>
+            <div class="mod-leaderboard-controls">
+                <div class="mod-leaderboard-filter">
+                    <label for="moderator-leaderboard-range">Time period</label>
+                    <select id="moderator-leaderboard-range" onchange="loadStaffLeaderboards()">
+                        <option value="today">Today</option>
+                        <option value="week" selected>This week</option>
+                        <option value="month">This month</option>
+                        <option value="all">All time</option>
+                    </select>
+                </div>
+            </div>
+            <div class="staff-leaderboard-section">
+                <h3>Moderator Leaderboard</h3>
+                <p id="moderator-leaderboard-summary" class="mod-leaderboard-summary"></p>
+                <div id="moderator-leaderboard">Loading record review stats...</div>
+            </div>
+            <div class="staff-leaderboard-section">
+                <h3>Admin Leaderboard</h3>
+                <p id="admin-leaderboard-summary" class="mod-leaderboard-summary"></p>
+                <div id="admin-leaderboard">Loading verification review stats...</div>
+            </div>
+        </section>
     </main>
+
+    <div id="verification-notification-options-modal" class="notification-options-overlay hidden" aria-hidden="true">
+        <div class="notification-options-box" role="dialog" aria-modal="true" aria-labelledby="verification-notification-options-title">
+            <div class="notification-options-header">
+                <h3 id="verification-notification-options-title">Options</h3>
+                <button type="button" class="notification-options-close" onclick="closeVerificationNotificationOptions()" aria-label="Close">&times;</button>
+            </div>
+            <div class="notification-settings" aria-label="Verification notification settings">
+                <button type="button" id="verification-notifications-toggle" class="notification-toggle" onclick="toggleVerificationNotifications()" aria-pressed="false">
+                    <img id="verification-notifications-image" src="/assets/GJ_checkOff_001.png" alt="Verification Notifications off">
+                    <span>Verification notifications</span>
+                </button>
+                <button type="button" id="verification-discord-ping-toggle" class="notification-toggle" onclick="toggleVerificationDiscordPing()" aria-pressed="false" hidden>
+                    <img id="verification-discord-ping-image" src="/assets/GJ_checkOff_001.png" alt="Discord Ping off">
+                    <span>Discord Ping</span>
+                </button>
+                <div class="notification-range-wrap">
+                    <label for="verification-notification-range">Filter: <strong>Top <span id="verification-notification-range-value">150</span></strong> and above.</label>
+                    <input type="range" id="verification-notification-range" min="1" max="150" step="1" value="150" oninput="previewVerificationNotificationRange()" onchange="saveVerificationNotificationRange()">
+                </div>
+                <div id="verification-notification-settings-message" class="notification-settings-message" aria-live="polite"></div>
+            </div>
+        </div>
+    </div>
 
     <div id="verification-comment-modal" class="comment-modal hidden" aria-hidden="true">
         <div class="comment-modal-box" role="dialog" aria-modal="true" aria-labelledby="verification-comment-title">
@@ -214,9 +358,140 @@
     </div>
 
     <script src="/nav.js"></script>
+    <script src="/icon-renderer.js"></script>
     <script>
         let currentUser = null;
         const isImpossibleList = window.location.hostname.includes('impossible');
+        const verificationNotificationSettings = {
+            verificationNotifications: false,
+            discordPing: false,
+            discordLinked: false,
+            maxPosition: 150,
+            saving: false,
+        };
+
+        function setVerificationCheckbox(buttonId, imageId, enabled, label) {
+            const button = document.getElementById(buttonId);
+            const image = document.getElementById(imageId);
+            button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+            image.src = enabled ? '/assets/GJ_checkOn_001.png' : '/assets/GJ_checkOff_001.png';
+            image.alt = `${label} ${enabled ? 'on' : 'off'}`;
+        }
+
+        function renderVerificationNotificationSettings() {
+            setVerificationCheckbox(
+                'verification-notifications-toggle',
+                'verification-notifications-image',
+                verificationNotificationSettings.verificationNotifications,
+                'Verification Notifications'
+            );
+            setVerificationCheckbox(
+                'verification-discord-ping-toggle',
+                'verification-discord-ping-image',
+                verificationNotificationSettings.discordPing,
+                'Discord Ping'
+            );
+
+            const range = document.getElementById('verification-notification-range');
+            const rangeValue = document.getElementById('verification-notification-range-value');
+            range.value = String(verificationNotificationSettings.maxPosition);
+            rangeValue.textContent = String(verificationNotificationSettings.maxPosition);
+
+            const discordToggle = document.getElementById('verification-discord-ping-toggle');
+            discordToggle.hidden = !verificationNotificationSettings.discordLinked;
+            document.getElementById('verification-notifications-toggle').disabled = verificationNotificationSettings.saving;
+            discordToggle.disabled = verificationNotificationSettings.saving;
+            range.disabled = verificationNotificationSettings.saving;
+        }
+
+        async function loadVerificationNotificationSettings() {
+            const message = document.getElementById('verification-notification-settings-message');
+            message.textContent = '';
+            try {
+                const response = await fetch('/api/admin/verification-notification-settings');
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Could not load notification settings.');
+                verificationNotificationSettings.verificationNotifications = Boolean(data.verificationNotifications);
+                verificationNotificationSettings.discordPing = Boolean(data.discordPing);
+                verificationNotificationSettings.discordLinked = Boolean(data.discordLinked);
+                verificationNotificationSettings.maxPosition = Math.min(150, Math.max(1, Number(data.maxPosition) || 150));
+                renderVerificationNotificationSettings();
+            } catch (err) {
+                message.textContent = err.message;
+            }
+        }
+
+        async function saveVerificationNotificationSettings(previous) {
+            verificationNotificationSettings.saving = true;
+            renderVerificationNotificationSettings();
+            const message = document.getElementById('verification-notification-settings-message');
+            message.textContent = '';
+            try {
+                const response = await fetch('/api/admin/verification-notification-settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        verificationNotifications: verificationNotificationSettings.verificationNotifications,
+                        discordPing: verificationNotificationSettings.discordPing,
+                        maxPosition: verificationNotificationSettings.maxPosition,
+                    }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Could not save notification settings.');
+                verificationNotificationSettings.verificationNotifications = Boolean(data.verificationNotifications);
+                verificationNotificationSettings.discordPing = Boolean(data.discordPing);
+                verificationNotificationSettings.discordLinked = Boolean(data.discordLinked);
+                verificationNotificationSettings.maxPosition = Math.min(150, Math.max(1, Number(data.maxPosition) || 150));
+            } catch (err) {
+                Object.assign(verificationNotificationSettings, previous);
+                message.textContent = err.message;
+            } finally {
+                verificationNotificationSettings.saving = false;
+                renderVerificationNotificationSettings();
+            }
+        }
+
+        async function openVerificationNotificationOptions() {
+            const modal = document.getElementById('verification-notification-options-modal');
+            modal.classList.remove('hidden');
+            modal.setAttribute('aria-hidden', 'false');
+            await loadVerificationNotificationSettings();
+        }
+
+        function closeVerificationNotificationOptions() {
+            const modal = document.getElementById('verification-notification-options-modal');
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
+        function toggleVerificationNotifications() {
+            if (verificationNotificationSettings.saving) return;
+            const previous = { ...verificationNotificationSettings };
+            verificationNotificationSettings.verificationNotifications = !verificationNotificationSettings.verificationNotifications;
+            renderVerificationNotificationSettings();
+            saveVerificationNotificationSettings(previous);
+        }
+
+        function toggleVerificationDiscordPing() {
+            if (verificationNotificationSettings.saving || !verificationNotificationSettings.discordLinked) return;
+            const previous = { ...verificationNotificationSettings };
+            verificationNotificationSettings.discordPing = !verificationNotificationSettings.discordPing;
+            renderVerificationNotificationSettings();
+            saveVerificationNotificationSettings(previous);
+        }
+
+        function previewVerificationNotificationRange() {
+            const value = Math.min(150, Math.max(1, Number(document.getElementById('verification-notification-range').value) || 150));
+            document.getElementById('verification-notification-range-value').textContent = String(value);
+        }
+
+        function saveVerificationNotificationRange() {
+            if (verificationNotificationSettings.saving) return;
+            const previous = { ...verificationNotificationSettings };
+            verificationNotificationSettings.maxPosition = Math.min(150, Math.max(1, Number(document.getElementById('verification-notification-range').value) || 150));
+            renderVerificationNotificationSettings();
+            saveVerificationNotificationSettings(previous);
+        }
 
         function setupListLabels() {
             const tabButton = document.getElementById('verif-tab-button');
@@ -257,6 +532,131 @@
 
             if(tabName === 'verif-tab') loadVerifications();
             if(tabName === 'levels-tab') loadAdminList();
+            if(tabName === 'moderator-leaderboard-tab') loadStaffLeaderboards();
+        }
+
+        function getModeratorLeaderboardStart(range) {
+            if (range === 'all') return null;
+
+            const start = new Date();
+            start.setHours(0, 0, 0, 0);
+
+            if (range === 'week') {
+                const day = start.getDay();
+                const daysSinceMonday = day === 0 ? 6 : day - 1;
+                start.setDate(start.getDate() - daysSinceMonday);
+            } else if (range === 'month') {
+                start.setDate(1);
+            }
+
+            return start.toISOString();
+        }
+
+        function getRoleBadgeSrc(role) {
+            switch (String(role || '').toLowerCase()) {
+                case 'owner': return '/assets/owner.png';
+                case 'admin': return '/assets/eldermoderator.png';
+                case 'moderator': return '/assets/moderator.png';
+                default: return '';
+            }
+        }
+
+        function getUserIcon(user = {}) {
+            return user.icon || {
+                type: user.icon_type || 'cube',
+                id: user.icon_id ?? 1,
+                color1: user.color1 ?? 12,
+                color2: user.color2 ?? 3,
+                glow: user.glow ?? -1,
+            };
+        }
+
+        function renderStaffLeaderboard(container, staff, iconPrefix) {
+            if (!staff.length) {
+                container.innerHTML = '<p style="color:#666;">No staff members found.</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="mod-leaderboard-table-wrap">
+                    <table class="mod-leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>Staff member</th>
+                                <th class="number-cell">Accepted</th>
+                                <th class="number-cell">Rejected</th>
+                                <th class="number-cell">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${staff.map((member, index) => `
+                                <tr>
+                                    <td>
+                                        <div class="staff-player-cell">
+                                            <span class="user-icon-host" id="${iconPrefix}-icon-${index}" aria-hidden="true"></span>
+                                            <a class="staff-player-link" href="/profile?user=${encodeURIComponent(member.username || '')}">
+                                                ${getRoleBadgeSrc(member.role) ? `<img class="staff-role-badge" src="${getRoleBadgeSrc(member.role)}" alt="">` : ''}
+                                                <span>#${index + 1} - ${escapeHtml(member.username)}</span>
+                                            </a>
+                                        </div>
+                                    </td>
+                                    <td class="number-cell">${Number(member.accepted || 0)}</td>
+                                    <td class="number-cell">${Number(member.rejected || 0)}</td>
+                                    <td class="number-cell b">${Number(member.total || 0)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            staff.forEach((member, index) => {
+                WBDLIconRenderer.renderInto(
+                    document.getElementById(`${iconPrefix}-icon-${index}`),
+                    getUserIcon(member),
+                    { quality: 'uhd' }
+                );
+            });
+        }
+
+        async function loadSingleStaffLeaderboard(submissionType, containerId, summaryId, label) {
+            const container = document.getElementById(containerId);
+            const summary = document.getElementById(summaryId);
+            const range = document.getElementById('moderator-leaderboard-range').value;
+            const params = new URLSearchParams({ range, submissionType });
+            const since = getModeratorLeaderboardStart(range);
+            if (since) params.set('since', since);
+
+            container.innerHTML = '<p style="color:#666;">Loading stats...</p>';
+            summary.textContent = '';
+
+            const res = await fetch(`/api/admin/moderator-leaderboard?${params.toString()}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `Could not load ${label.toLowerCase()}.`);
+
+            const staff = Array.isArray(data.staff) ? data.staff : [];
+            const totalActions = staff.reduce((sum, member) => sum + Number(member.total || 0), 0);
+            const rangeLabel = {
+                today: 'today',
+                week: 'this week',
+                month: 'this month',
+                all: 'all time',
+            }[range] || 'all time';
+            summary.textContent = `${label} ${rangeLabel}: ${totalActions}`;
+            renderStaffLeaderboard(container, staff, submissionType === 'verification' ? 'admin-staff' : 'mod-staff');
+        }
+
+        async function loadStaffLeaderboards() {
+            try {
+                await Promise.all([
+                    loadSingleStaffLeaderboard('record', 'moderator-leaderboard', 'moderator-leaderboard-summary', 'Record reviews'),
+                    loadSingleStaffLeaderboard('verification', 'admin-leaderboard', 'admin-leaderboard-summary', 'Verification reviews'),
+                ]);
+            } catch (err) {
+                const message = escapeHtml(err.message || 'Could not load staff leaderboard.');
+                document.getElementById('moderator-leaderboard').innerHTML = `<p style="color:var(--error);">${message}</p>`;
+                document.getElementById('admin-leaderboard').innerHTML = `<p style="color:var(--error);">${message}</p>`;
+            }
         }
 
         async function loadAdminList() {
@@ -492,12 +892,16 @@
             location.reload();
         }
 
+        document.getElementById('verification-notification-options-modal').addEventListener('click', event => {
+            if (event.target === event.currentTarget) closeVerificationNotificationOptions();
+        });
+
         document.getElementById('verification-comment-modal').addEventListener('click', event => {
             if (event.target === event.currentTarget) closeVerificationComment();
         });
 
         document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') closeVerificationComment();
+            if (event.key === 'Escape') { closeVerificationComment(); closeVerificationNotificationOptions(); }
         });
 
         async function init() {

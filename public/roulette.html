@@ -417,18 +417,28 @@
                 : demons.filter(demon => Number(demon.position) <= 150);
         }
 
+        function usedLevelIds() {
+            return new Set(
+                state.history
+                    .map(item => Number(item.levelId))
+                    .filter(Number.isFinite)
+            );
+        }
+
         function currentLevel() {
             const eligible = eligibleLevels();
-            return eligible.find(demon => Number(demon.id) === Number(state.currentLevelId)) || null;
+            const used = usedLevelIds();
+            return eligible.find(demon =>
+                Number(demon.id) === Number(state.currentLevelId) && !used.has(Number(demon.id))
+            ) || null;
         }
 
         function chooseRandomLevel(avoidId = null) {
-            const eligible = eligibleLevels();
-            if (!eligible.length) return null;
-            const pool = eligible.length > 1 && avoidId != null
-                ? eligible.filter(demon => Number(demon.id) !== Number(avoidId))
-                : eligible;
-            return pool[Math.floor(Math.random() * pool.length)] || eligible[0];
+            const used = usedLevelIds();
+            if (avoidId != null) used.add(Number(avoidId));
+            const pool = eligibleLevels().filter(demon => !used.has(Number(demon.id)));
+            if (!pool.length) return null;
+            return pool[Math.floor(Math.random() * pool.length)] || null;
         }
 
         function toggleLegacyLevels(checked) {
@@ -494,7 +504,7 @@
 
             const level = ensureCurrentLevel();
             if (!level) {
-                card.innerHTML = '<div class="complete-state"><h2>No levels available.</h2></div>';
+                card.innerHTML = '<div class="complete-state"><h2>No unused levels available.</h2></div>';
                 return;
             }
 

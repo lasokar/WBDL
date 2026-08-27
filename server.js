@@ -412,8 +412,124 @@ function canReviewSubmission(actorId, targetUserId, actorRole) {
     return Number(actorId) !== Number(targetUserId) || String(actorRole || '').toLowerCase() === 'owner';
 }
 
+const ALLOWED_EMAIL_DOMAINS = new Set(['gmail.com', 'outlook.com', 'hotmail.com', 'icloud.com']);
+
 function normalizeEmail(value) {
     return String(value || '').trim().toLowerCase();
+}
+
+function getEmailIdentity(value) {
+    const email = normalizeEmail(value);
+    const match = email.match(/^([^\s@]+)@([^\s@]+)$/);
+    if (!match) return null;
+
+    const localPart = match[1];
+    const domain = match[2];
+    if (!ALLOWED_EMAIL_DOMAINS.has(domain)) return null;
+
+    const baseLocalPart = localPart.split('+', 1)[0].replace(/\./g, '');
+    if (!baseLocalPart) return null;
+
+    return `${baseLocalPart}@${domain}`;
+}
+
+function emailIdentitySql(columnName) {
+    return `LOWER(REPLACE(SPLIT_PART(SPLIT_PART(${columnName}, '@', 1), '+', 1), '.', '')) || '@' || LOWER(SPLIT_PART(${columnName}, '@', 2))`;
+}
+
+function extractYoutubeVideoId(parsedUrl) {
+    const hostname = parsedUrl.hostname.toLowerCase().replace(/^www\./, '').replace(/^m\./, '').replace(/^music\./, '');
+    const parts = parsedUrl.pathname.split('/').filter(Boolean);
+
+    if (hostname === 'youtu.be') {
+        return parts[0] || null;
+    }
+
+    if (hostname === 'youtube.com' || hostname === 'youtube-nocookie.com') {
+        if (parsedUrl.pathname === '/watch') return parsedUrl.searchParams.get('v');
+        if (['shorts', 'embed', 'live'].includes(parts[0])) return parts[1] || null;
+    }
+
+    return null;
+}
+
+function normalizePercentEncoding(pathname) {
+    return String(pathname || '/').replace(/%([0-9a-f]{2})/gi, (match, hex) => {
+        const char = String.fromCharCode(parseInt(hex, 16));
+        return /^[A-Za-z0-9._~-]$/.test(char) ? char : `%${hex.toUpperCase()}`;
+    });
+}
+
+function normalizeVideoSubmission(value) {
+    const raw = String(value || '').trim();
+    try {
+        const parsed = new URL(raw);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+
+        const youtubeId = extractYoutubeVideoId(parsed);
+        if (youtubeId && /^[A-Za-z0-9_-]{6,}$/.test(youtubeId)) {
+            const cleanUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
+            return { cleanUrl, key: `youtube:${youtubeId}` };
+        }
+
+        let hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+        let pathname = normalizePercentEncoding(parsed.pathname || '/').replace(/\/{2,}/g, '/');
+        if (pathname.length > 1) pathname = pathname.replace(/\/+$/, '');
+        const port = parsed.port ? `:${parsed.port}` : '';
+
+        return {
+            cleanUrl: raw,
+            key: `url:${hostname}${port}${pathname}`,
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+async function findActiveVideoReuse(db, videoKey, { excludeRecordId = null, excludeVerificationId = null } = {}) {
+    const recordResult = await db.query(`
+        SELECT id, video_url
+        FROM records
+        WHERE status IN ('pending', 'accepted', 'rejected')
+          AND video_url IS NOT NULL
+          AND TRIM(video_url) <> ''
+          ${excludeRecordId ? 'AND id <> $1' : ''}
+    `, excludeRecordId ? [excludeRecordId] : []);
+
+    for (const row of recordResult.rows) {
+        const normalized = normalizeVideoSubmission(row.video_url);
+        if (normalized && normalized.key === videoKey) return { type: 'record', id: row.id };
+    }
+
+    const verificationResult = await db.query(`
+        SELECT id, video_url
+        FROM verifications
+        WHERE status IN ('pending', 'accepted', 'rejected')
+          AND video_url IS NOT NULL
+          AND TRIM(video_url) <> ''
+          ${excludeVerificationId ? 'AND id <> $1' : ''}
+    `, excludeVerificationId ? [excludeVerificationId] : []);
+
+    for (const row of verificationResult.rows) {
+        const normalized = normalizeVideoSubmission(row.video_url);
+        if (normalized && normalized.key === videoKey) return { type: 'verification', id: row.id };
+    }
+
+    return null;
+}
+
+async function getSubmissionRestriction(db, userId) {
+    const result = await db.query(`
+        SELECT COALESCE(leaderboard_banned, FALSE) AS leaderboard_banned,
+               COALESCE(account_disabled, FALSE) AS account_disabled
+        FROM users
+        WHERE id = $1
+    `, [userId]);
+    const user = result.rows[0];
+    if (!user) return 'User not found.';
+    if (user.account_disabled) return 'This account is disabled.';
+    if (user.leaderboard_banned) return 'Leaderboard-banned users cannot submit records.';
+    return null;
 }
 
 function normalizeEnjoymentRating(value, percentage) {
@@ -491,6 +607,34 @@ async function createInboxNotification(db, {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE)
         RETURNING id
     `, [userId, actorId, recordId, type, reason, listType, subject, body, senderName]);
+}
+
+
+async function logModerationAction(db, {
+    moderatorId,
+    submissionType,
+    decision,
+    listType = 'primary',
+    submissionId = null,
+}) {
+    if (!moderatorId) return null;
+    if (!['record', 'verification'].includes(submissionType)) return null;
+    if (!['accepted', 'rejected'].includes(decision)) return null;
+
+    return db.query(`
+        UPDATE users
+        SET moderation_actions = COALESCE(moderation_actions, '[]'::jsonb) ||
+            jsonb_build_array(
+                jsonb_build_object(
+                    'type', $2::text,
+                    'decision', $3::text,
+                    'listType', $4::text,
+                    'submissionId', $5::integer,
+                    'at', CURRENT_TIMESTAMP
+                )
+            )
+        WHERE id = $1
+    `, [moderatorId, submissionType, decision, listType, submissionId]);
 }
 
 
@@ -572,6 +716,80 @@ async function notifySubmissionSubscribers({
         }
     } catch (err) {
         console.error('Submission subscriber notification error:', err);
+    }
+}
+
+async function notifyVerificationSubscribers({
+    verificationId,
+    submitterId,
+    levelName,
+    levelAuthor,
+    levelId,
+    placementOpinion,
+    videoUrl,
+    listType = 'primary',
+}) {
+    const position = Number.parseInt(placementOpinion, 10);
+    if (!Number.isInteger(position) || position < 1 || position > 150) return;
+
+    try {
+        const submitterResult = await pool.query(`
+            SELECT COALESCE(NULLIF(display_name, ''), username) AS submitter_name
+            FROM users
+            WHERE id = $1
+        `, [submitterId]);
+        const submitterName = submitterResult.rows[0]?.submitter_name || 'A user';
+        const subject = `New verification submission: ${levelName}`;
+        const body = `**${submitterName}** submitted a verification for **${levelName}** by **${levelAuthor}**.\n\n**Placement opinion:** #${position}\n**Level ID:** ${levelId}\n**Video:** [Open verification](${videoUrl})`;
+
+        await pool.query(`
+            INSERT INTO notifications
+                (user_id, actor_id, type, reason, list_type, subject, body, sender_name, is_read)
+            SELECT
+                recipient.id,
+                $1,
+                'verification_submission',
+                NULL,
+                $2,
+                $3,
+                $4,
+                $5,
+                FALSE
+            FROM users recipient
+            WHERE LOWER(COALESCE(recipient.role, '')) IN ('admin', 'owner')
+              AND COALESCE(recipient.verification_notifications, FALSE) = TRUE
+              AND COALESCE(recipient.verification_notification_max_position, 150) >= $6::integer
+              AND recipient.id <> $1::integer
+        `, [submitterId, listType, subject, body, submitterName, position]);
+
+        const discordRecipients = await pool.query(`
+            SELECT discord_id
+            FROM users
+            WHERE LOWER(COALESCE(role, '')) IN ('admin', 'owner')
+              AND COALESCE(verification_discord_ping, FALSE) = TRUE
+              AND COALESCE(verification_notification_max_position, 150) >= $2::integer
+              AND discord_id IS NOT NULL
+              AND id <> $1::integer
+        `, [submitterId, position]);
+
+        const sendDiscordNotification = app.locals.sendDiscordVerificationNotification;
+        if (typeof sendDiscordNotification === 'function' && discordRecipients.rows.length) {
+            sendDiscordNotification({
+                discordIds: discordRecipients.rows.map(row => String(row.discord_id)),
+                submitterName,
+                levelName,
+                levelAuthor,
+                levelId,
+                position,
+                videoUrl,
+                listType,
+                verificationId,
+            }).catch(err => {
+                console.error('Discord verification notification error:', err);
+            });
+        }
+    } catch (err) {
+        console.error('Verification subscriber notification error:', err);
     }
 }
 
@@ -1218,57 +1436,80 @@ app.post('/api/register', async (req, res) => {
         return res.status(500).json({ error: "Error verifying CAPTCHA." });
     }
 
-    if (!email || !email.includes('@')) {
+    const normalizedEmail = normalizeEmail(email);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
         return res.status(400).json({ error: "Please enter a valid email address." });
     }
+    const emailIdentity = getEmailIdentity(normalizedEmail);
+    if (!emailIdentity) {
+        return res.status(400).json({ error: "Email validation failed. Please try a different email." });
+    }
+
     const userError = validateUsername(username);
     if (userError) return res.status(400).json({ error: userError });
 
     const passError = validatePassword(password);
     if (passError) return res.status(400).json({ error: passError });
 
+    const token = randomBytes(32).toString('hex');
+    let insertedPendingUser = false;
+    const client = await pool.connect();
     try {
-        const usernameCheck = await pool.query(
-            `SELECT id FROM users WHERE LOWER(username) = LOWER($1) 
-             UNION 
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [emailIdentity]);
+
+        const usernameCheck = await client.query(
+            `SELECT id FROM users WHERE LOWER(username) = LOWER($1)
+             UNION
              SELECT 1 FROM pending_users WHERE LOWER(username) = LOWER($1)`,
             [username]
         );
 
         if (usernameCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: "That username is already taken." });
         }
 
-        const emailCheck = await pool.query(
-            `SELECT id FROM users WHERE LOWER(email) = LOWER($1)
-             UNION
-             SELECT 1 FROM pending_users WHERE LOWER(email) = LOWER($1)
-             UNION
-             SELECT 1 FROM pending_email_changes
-             WHERE LOWER(email) = LOWER($1) AND expires_at > NOW()`,
-            [email]
-        );
+        const emailCheck = await client.query(`
+            SELECT id FROM users WHERE ${emailIdentitySql('email')} = $1
+            UNION ALL
+            SELECT 1 FROM pending_users WHERE ${emailIdentitySql('email')} = $1
+            UNION ALL
+            SELECT 1 FROM pending_email_changes
+            WHERE ${emailIdentitySql('email')} = $1 AND expires_at > NOW()
+            LIMIT 1
+        `, [emailIdentity]);
 
         if (emailCheck.rows.length > 0) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: "That email is already in use." });
         }
 
-        const token = randomBytes(32).toString('hex');
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        await pool.query(
+        await client.query(
             'INSERT INTO pending_users (token, username, password_hash, email) VALUES ($1, $2, $3, $4)',
-            [token, username, hashedPassword, email]
+            [token, username, hashedPassword, normalizedEmail]
         );
-
-        const verifyLink = `https://webdemonlist.org/verify?token=${token}`;        
-        await sendVerificationEmail(email, username, verifyLink);
-
-        res.json({ message: "Verification email sent! Please check your inbox (and spam folder)." });
-
+        insertedPendingUser = true;
+        await client.query('COMMIT');
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error(err);
-        res.status(500).json({ error: "An error occurred during registration." });
+        return res.status(500).json({ error: "An error occurred during registration." });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const verifyLink = `https://webdemonlist.org/verify?token=${token}`;
+        await sendVerificationEmail(normalizedEmail, username, verifyLink);
+        return res.json({ message: "Verification email sent! Please check your inbox (and spam folder)." });
+    } catch (err) {
+        if (insertedPendingUser) {
+            await pool.query('DELETE FROM pending_users WHERE token = $1', [token]).catch(() => {});
+        }
+        console.error(err);
+        return res.status(500).json({ error: "An error occurred while sending the verification email." });
     }
 });
 
@@ -1289,10 +1530,28 @@ app.get('/api/verify', async (req, res) => {
 
         if (pendingRegistration.rows.length) {
             const user = pendingRegistration.rows[0];
+            const emailIdentity = getEmailIdentity(user.email);
+            if (!emailIdentity) {
+                await client.query('DELETE FROM pending_users WHERE token = $1', [token]);
+                await client.query('COMMIT');
+                return res.status(400).json({ error: "Email validation failed. Please try a different email." });
+            }
+
+            await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [emailIdentity]);
+            const duplicate = await client.query(`
+                SELECT id FROM users
+                WHERE ${emailIdentitySql('email')} = $1
+                LIMIT 1
+            `, [emailIdentity]);
+            if (duplicate.rows.length) {
+                await client.query('DELETE FROM pending_users WHERE token = $1', [token]);
+                await client.query('COMMIT');
+                return res.status(409).json({ error: "That email address is already in use." });
+            }
 
             await client.query(
                 'INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3)',
-                [user.username, user.password_hash, user.email]
+                [user.username, user.password_hash, normalizeEmail(user.email)]
             );
             await client.query('DELETE FROM pending_users WHERE token = $1', [token]);
             await client.query('COMMIT');
@@ -1322,10 +1581,19 @@ app.get('/api/verify', async (req, res) => {
             return res.status(400).json({ error: "This email verification link has expired." });
         }
 
-        const duplicate = await client.query(
-            'SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id != $2 LIMIT 1',
-            [pendingEmail.email, pendingEmail.user_id]
-        );
+        const pendingEmailIdentity = getEmailIdentity(pendingEmail.email);
+        if (!pendingEmailIdentity) {
+            await client.query('DELETE FROM pending_email_changes WHERE token = $1', [token]);
+            await client.query('COMMIT');
+            return res.status(400).json({ error: "Email validation failed. Please try a different email." });
+        }
+
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [pendingEmailIdentity]);
+        const duplicate = await client.query(`
+            SELECT id FROM users
+            WHERE ${emailIdentitySql('email')} = $1 AND id != $2
+            LIMIT 1
+        `, [pendingEmailIdentity, pendingEmail.user_id]);
         if (duplicate.rows.length) {
             await client.query('DELETE FROM pending_email_changes WHERE token = $1', [token]);
             await client.query('COMMIT');
@@ -1472,110 +1740,130 @@ app.post('/api/submit', async (req, res) => {
         return res.status(400).json({ error: "Personal placement must be a whole number from 1 to 150 and can only be used for 100% records." });
     }
 
-    const urlPattern = new RegExp('^(https?:\\/\\/)?' + 
-        '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|' +
-        '((\\d{1,3}\\.){3}\\d{1,3}))' +
-        '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*' +
-        '(\\?[;&a-z\\d%_.~+=-]*)?' +
-        '(\\#[-a-z\\d_]*)?$', 'i');
-    
-    if (!urlPattern.test(videoUrl)) {
+    const normalizedVideo = normalizeVideoSubmission(videoUrl);
+    if (!normalizedVideo) {
         return res.status(400).json({ error: "Please enter a valid URL." });
     }
 
+    const client = await pool.connect();
+    let savedRecordId = null;
+    let isUpdate = false;
     try {
-        const demonQuery = await pool.query(
+        await client.query('BEGIN');
+
+        const restriction = await getSubmissionRestriction(client, req.session.userId);
+        if (restriction) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: restriction });
+        }
+
+        const demonQuery = await client.query(
             'SELECT position, requirement, list_type, name FROM demons WHERE id = $1',
             [demonId]
         );
-        
-        if (demonQuery.rows.length === 0) return res.status(404).json({ error: "Level not found." });
-        
+
+        if (demonQuery.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: "Level not found." });
+        }
+
         const { position, requirement, list_type } = demonQuery.rows[0];
 
         if (list_type === 'primary' && position > 150) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: "Submissions for the Legacy List are disabled." });
         }
 
         if (list_type !== list) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: "This level does not belong to the active list." });
         }
 
         if (list === 'primary') {
             if (position > 75) {
                 if (newPercent < 100) {
-                    return res.status(400).json({ 
-                        error: "This level is on the Extended List, you must get 100% lol" 
-                    });
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ error: "This level is on the Extended List, you must get 100% lol" });
                 }
-            } else {
-                if (newPercent < requirement) {
-                    return res.status(400).json({ error: `Level requires at least ${requirement}%.` });
-                }
+            } else if (newPercent < requirement) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: `Level requires at least ${requirement}%.` });
             }
         }
 
-        const existingRecord = await pool.query(
-            `SELECT id, percentage FROM records 
+        const existingRecord = await client.query(
+            `SELECT id, percentage FROM records
              WHERE user_id = $1 AND demon_id = $2 AND list_type = $3 AND status != 'rejected'`,
             [req.session.userId, demonId, list]
         );
 
-        if (existingRecord.rows.length > 0) {
-            const oldPercent = existingRecord.rows[0].percentage;
+        const activeRecord = existingRecord.rows[0] || null;
+        if (activeRecord && newPercent <= Number(activeRecord.percentage)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                error: `You already have an active ${activeRecord.percentage}% record. New entries must be a higher percentage.`
+            });
+        }
 
-            if (newPercent <= oldPercent) {
-                return res.status(400).json({ 
-                    error: `You already have an active ${oldPercent}% record. New entries must be a higher percentage.` 
-                });
-            }
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedVideo.key]);
+        const reuse = await findActiveVideoReuse(client, normalizedVideo.key, {
+            excludeRecordId: activeRecord ? Number(activeRecord.id) : null,
+        });
+        if (reuse) {
+            await client.query('ROLLBACK');
+            return res.json({ message: activeRecord
+                ? "Record updated and awaiting review!"
+                : "Record submitted successfully!" }); // Not really, the video was already used LMAO
+        }
 
-            const updatedRecordId = Number(existingRecord.rows[0].id);
-            await pool.query(
+        if (activeRecord) {
+            savedRecordId = Number(activeRecord.id);
+            isUpdate = true;
+            await client.query(
                 `UPDATE records
                  SET percentage = $1, video_url = $2, enjoyment_rating = $3, personal_placement = $4, submission_comments = $5, status = 'pending'
                  WHERE id = $6`,
-                [newPercent, videoUrl, normalizedEnjoyment, normalizedPersonalPlacement, comments || null, updatedRecordId]
+                [newPercent, normalizedVideo.cleanUrl, normalizedEnjoyment, normalizedPersonalPlacement, comments || null, savedRecordId]
             );
-            await notifySubmissionSubscribers({
-                recordId: updatedRecordId,
-                submitterId: req.session.userId,
-                demonId,
-                percentage: newPercent,
-                videoUrl,
-                enjoymentRating: normalizedEnjoyment,
-                listType: list,
-                isUpdate: true,
-            });
-            const leaderboardSync = await syncLeaderboardTopOne(list);
-            for (const changedUserId of leaderboardSync.changedUserIds || []) {
-                await evaluateUserBadges(changedUserId, list);
-            }
-            return res.json({ message: "Record updated and awaiting review!" });
+        } else {
+            const insertedRecord = await client.query(
+                `INSERT INTO records (user_id, demon_id, percentage, video_url, enjoyment_rating, personal_placement, submission_comments, list_type, status)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+                 RETURNING id`,
+                [req.session.userId, demonId, newPercent, normalizedVideo.cleanUrl, normalizedEnjoyment, normalizedPersonalPlacement, comments || null, list]
+            );
+            savedRecordId = Number(insertedRecord.rows[0].id);
         }
 
-        const insertedRecord = await pool.query(
-            `INSERT INTO records (user_id, demon_id, percentage, video_url, enjoyment_rating, personal_placement, submission_comments, list_type, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
-             RETURNING id`,
-            [req.session.userId, demonId, newPercent, videoUrl, normalizedEnjoyment, normalizedPersonalPlacement, comments || null, list]
-        );
-        await notifySubmissionSubscribers({
-            recordId: Number(insertedRecord.rows[0].id),
-            submitterId: req.session.userId,
-            demonId,
-            percentage: newPercent,
-            videoUrl,
-            enjoymentRating: normalizedEnjoyment,
-            listType: list,
-            isUpdate: false,
-        });
-
-        res.json({ message: "Record submitted successfully!" });
+        await client.query('COMMIT');
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error(err);
-        res.status(500).json({ error: "Server error." });
+        return res.status(500).json({ error: "Server error." });
+    } finally {
+        client.release();
     }
+
+    await notifySubmissionSubscribers({
+        recordId: savedRecordId,
+        submitterId: req.session.userId,
+        demonId,
+        percentage: newPercent,
+        videoUrl: normalizedVideo.cleanUrl,
+        enjoymentRating: normalizedEnjoyment,
+        listType: list,
+        isUpdate,
+    });
+
+    if (isUpdate) {
+        const leaderboardSync = await syncLeaderboardTopOne(list);
+        for (const changedUserId of leaderboardSync.changedUserIds || []) {
+            await evaluateUserBadges(changedUserId, list);
+        }
+        return res.json({ message: "Record updated and awaiting review!" });
+    }
+
+    return res.json({ message: "Record submitted successfully!" });
 });
 
 
@@ -1626,7 +1914,7 @@ app.patch('/api/records/pending/:recordId', async (req, res) => {
     const percentage = list === 'impossible'
         ? Math.round(Number.parseFloat(req.body.percentage) * 100) / 100
         : Number.parseInt(req.body.percentage, 10);
-    const videoUrl = String(req.body.videoUrl || '').trim();
+    const normalizedVideo = normalizeVideoSubmission(req.body.videoUrl);
     const enjoymentRating = normalizeEnjoymentRating(req.body.enjoymentRating, percentage);
     const personalPlacement = normalizePersonalPlacement(req.body.personalPlacement, percentage);
     const comments = cleanProfileText(req.body.comments, 1000);
@@ -1647,7 +1935,7 @@ app.patch('/api/records/pending/:recordId', async (req, res) => {
     if (list !== 'impossible' && !Number.isInteger(percentage)) {
         return res.status(400).json({ error: "Main-list percentages must be whole numbers." });
     }
-    if (!isValidHttpUrl(videoUrl)) {
+    if (!normalizedVideo) {
         return res.status(400).json({ error: "Please enter a valid video URL." });
     }
     if (req.body.enjoymentRating !== '' && req.body.enjoymentRating !== null && req.body.enjoymentRating !== undefined && enjoymentRating === null) {
@@ -1657,39 +1945,66 @@ app.patch('/api/records/pending/:recordId', async (req, res) => {
         return res.status(400).json({ error: "Personal placement must be a whole number from 1 to 150 and can only be used for 100% records." });
     }
 
+    const client = await pool.connect();
     try {
-        const recordResult = await pool.query(`
+        await client.query('BEGIN');
+        const restriction = await getSubmissionRestriction(client, req.session.userId);
+        if (restriction) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: restriction });
+        }
+
+        const recordResult = await client.query(`
             SELECT r.id, d.position, d.requirement, d.list_type
             FROM records r
             JOIN demons d ON d.id = r.demon_id
             WHERE r.id = $1 AND r.user_id = $2 AND r.status = 'pending' AND r.list_type = $3
+            FOR UPDATE OF r
         `, [recordId, req.session.userId, list]);
         const record = recordResult.rows[0];
-        if (!record) return res.status(404).json({ error: "Pending record not found." });
+        if (!record) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: "Pending record not found." });
+        }
 
         if (list === 'primary') {
             if (Number(record.position) > 150) {
+                await client.query('ROLLBACK');
                 return res.status(400).json({ error: "Legacy List submissions are disabled." });
             }
             if (Number(record.position) > 75 && percentage !== 100) {
+                await client.query('ROLLBACK');
                 return res.status(400).json({ error: "Extended List records must be 100%." });
             }
             if (Number(record.position) <= 75 && percentage < Number(record.requirement)) {
+                await client.query('ROLLBACK');
                 return res.status(400).json({ error: `This level requires at least ${record.requirement}%.` });
             }
         }
 
-        await pool.query(`
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedVideo.key]);
+        const reuse = await findActiveVideoReuse(client, normalizedVideo.key, { excludeRecordId: recordId });
+        if (reuse) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: "That video has already been used." });
+        }
+
+        await client.query(`
             UPDATE records
             SET percentage = $1, video_url = $2, enjoyment_rating = $3, personal_placement = $4, submission_comments = $5
             WHERE id = $6
-        `, [percentage, videoUrl, enjoymentRating, personalPlacement, comments || null, recordId]);
-        res.json({ message: "Pending record updated." });
+        `, [percentage, normalizedVideo.cleanUrl, enjoymentRating, personalPlacement, comments || null, recordId]);
+        await client.query('COMMIT');
+        return res.json({ message: "Pending record updated." });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error('Pending record update error:', err);
-        res.status(500).json({ error: "Could not update pending record." });
+        return res.status(500).json({ error: "Could not update pending record." });
+    } finally {
+        client.release();
     }
 });
+
 
 app.delete('/api/records/pending/:recordId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
@@ -1942,15 +2257,21 @@ app.post('/api/admin/users/:userId/disable', isAdmin, async (req, res) => {
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
     if (!Number.isInteger(targetUserId)) return res.status(400).json({ error: "Invalid user." });
 
+    const client = await pool.connect();
     try {
-        const targetResult = await pool.query('SELECT username, role FROM users WHERE id = $1', [targetUserId]);
+        await client.query('BEGIN');
+        const targetResult = await client.query('SELECT username, role FROM users WHERE id = $1 FOR UPDATE', [targetUserId]);
         const target = targetResult.rows[0];
-        if (!target) return res.status(404).json({ error: "User not found." });
+        if (!target) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: "User not found." });
+        }
         if (isStaffRole(target.role)) {
+            await client.query('ROLLBACK');
             return res.status(403).json({ error: "Moderators, admins, and the owner cannot be disabled." });
         }
 
-        await pool.query(`
+        await client.query(`
             UPDATE users
             SET account_disabled = $1,
                 account_disabled_reason = $2,
@@ -1959,28 +2280,56 @@ app.post('/api/admin/users/:userId/disable', isAdmin, async (req, res) => {
             WHERE id = $4
         `, [disabled, disabled ? (reason || null) : null, req.session.userId, targetUserId]);
 
-        await createInboxNotification(pool, {
-            userId: targetUserId,
-            actorId: req.session.userId,
-            type: disabled ? 'account_disabled' : 'account_enabled',
-            reason: reason || null,
-            listType: list,
-            subject: disabled ? 'Account disabled' : 'Account re-enabled',
-            body: disabled
-                ? `Your WBDL account has been disabled.${reason ? `\n\n**Reason:** ${reason}` : ''}`
-                : 'Your WBDL account has been re-enabled. You may sign in and use the site again.',
-        });
+        if (disabled) {
+            await client.query(`
+                DELETE FROM notifications
+                WHERE user_id = $1
+                   OR record_id IN (
+                        SELECT id
+                        FROM records
+                        WHERE user_id = $1 AND status IN ('pending', 'rejected')
+                   )
+            `, [targetUserId]);
+
+            await client.query(`
+                DELETE FROM records
+                WHERE user_id = $1 AND status IN ('pending', 'rejected')
+            `, [targetUserId]);
+
+            await client.query(`
+                DELETE FROM verifications
+                WHERE user_id = $1 AND status IN ('pending', 'rejected')
+            `, [targetUserId]);
+        }
+
+        await client.query('COMMIT');
+
+        if (!disabled) {
+            await createInboxNotification(pool, {
+                userId: targetUserId,
+                actorId: req.session.userId,
+                type: 'account_enabled',
+                reason: reason || null,
+                listType: list,
+                subject: 'Account re-enabled',
+                body: 'Your WBDL account has been re-enabled!',
+            });
+        }
 
         const sync = await syncLeaderboardTopOne(list);
         for (const userId of new Set([targetUserId, ...(sync.changedUserIds || [])])) {
             if (userId) await evaluateUserBadges(userId, list);
         }
-        res.json({ message: disabled ? "Account disabled." : "Account re-enabled." });
+        return res.json({ message: disabled ? "Account disabled." : "Account re-enabled." });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error('Account disable error:', err);
-        res.status(500).json({ error: "Could not update account state." });
+        return res.status(500).json({ error: "Could not update account state." });
+    } finally {
+        client.release();
     }
 });
+
 
 app.post('/api/owner/users/:userId/role', isOwner, async (req, res) => {
     const targetUserId = parseInt(req.params.userId, 10);
@@ -2150,7 +2499,7 @@ app.patch('/api/admin/users/:userId/records/:recordId', isAdmin, async (req, res
         }
 
         const recordResult = await pool.query(`
-            SELECT r.id, r.user_id, d.name AS demon_name, d.position
+            SELECT r.id, r.user_id, r.status AS old_status, d.name AS demon_name, d.position
             FROM records r
             JOIN demons d ON d.id = r.demon_id
             WHERE r.id = $1 AND r.user_id = $2 AND r.list_type = $3
@@ -2167,6 +2516,16 @@ app.patch('/api/admin/users/:userId/records/:recordId', isAdmin, async (req, res
                 accepted_position = CASE WHEN $4 = 'accepted' THEN $5 ELSE accepted_position END
             WHERE id = $6
         `, [percentage, videoUrl, enjoymentRating, status, record.position, recordId]);
+
+        if (record.old_status === 'pending' && ['accepted', 'rejected'].includes(status)) {
+            await logModerationAction(pool, {
+                moderatorId: req.session.userId,
+                submissionType: 'record',
+                decision: status,
+                listType: list,
+                submissionId: recordId,
+            });
+        }
 
         await createInboxNotification(pool, {
             userId: targetUserId,
@@ -2297,6 +2656,75 @@ app.patch('/api/moderation/submission-notification-settings', isMod, async (req,
     }
 });
 
+
+app.get('/api/admin/verification-notification-settings', isAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                COALESCE(verification_notifications, FALSE) AS verification_notifications,
+                COALESCE(verification_discord_ping, FALSE) AS verification_discord_ping,
+                COALESCE(verification_notification_max_position, 150) AS verification_notification_max_position,
+                discord_id IS NOT NULL AS discord_linked
+            FROM users
+            WHERE id = $1
+        `, [req.session.userId]);
+        const settings = result.rows[0];
+        if (!settings) return res.status(404).json({ error: 'User not found.' });
+
+        res.json({
+            verificationNotifications: Boolean(settings.verification_notifications),
+            discordPing: Boolean(settings.verification_discord_ping),
+            maxPosition: Math.min(150, Math.max(1, Number(settings.verification_notification_max_position) || 150)),
+            discordLinked: Boolean(settings.discord_linked),
+        });
+    } catch (err) {
+        console.error('Verification notification settings load error:', err);
+        res.status(500).json({ error: 'Could not load verification notification settings.' });
+    }
+});
+
+app.patch('/api/admin/verification-notification-settings', isAdmin, async (req, res) => {
+    const { verificationNotifications, discordPing } = req.body;
+    const maxPosition = Number.parseInt(req.body?.maxPosition, 10);
+
+    if (typeof verificationNotifications !== 'boolean' || typeof discordPing !== 'boolean') {
+        return res.status(400).json({ error: 'Notification settings must be true or false.' });
+    }
+    if (!Number.isInteger(maxPosition) || maxPosition < 1 || maxPosition > 150) {
+        return res.status(400).json({ error: 'Verification notification range must be between 1 and 150.' });
+    }
+
+    try {
+        const userResult = await pool.query(
+            'SELECT discord_id FROM users WHERE id = $1',
+            [req.session.userId]
+        );
+        const user = userResult.rows[0];
+        if (!user) return res.status(404).json({ error: 'User not found.' });
+        if (discordPing && !user.discord_id) {
+            return res.status(400).json({ error: 'Link your Discord account before enabling Discord Ping.' });
+        }
+
+        await pool.query(`
+            UPDATE users
+            SET verification_notifications = $1,
+                verification_discord_ping = $2,
+                verification_notification_max_position = $3
+            WHERE id = $4
+        `, [verificationNotifications, discordPing, maxPosition, req.session.userId]);
+
+        res.json({
+            verificationNotifications,
+            discordPing,
+            maxPosition,
+            discordLinked: Boolean(user.discord_id),
+        });
+    } catch (err) {
+        console.error('Verification notification settings update error:', err);
+        res.status(500).json({ error: 'Could not update verification notification settings.' });
+    }
+});
+
 app.get('/api/admin/pending', isMod, async (req, res) => {
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
 
@@ -2382,6 +2810,14 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
                 error: "Another mod took care of this record first xd"
             });
         }
+
+        await logModerationAction(client, {
+            moderatorId: actorId,
+            submissionType: 'record',
+            decision: status,
+            listType: record.list_type,
+            submissionId: Number(recordId),
+        });
 
         const accepted = status === 'accepted';
         const body = accepted
@@ -2776,7 +3212,7 @@ app.patch('/api/verifications/pending/:verifId', async (req, res) => {
     const author = cleanProfileText(req.body.author, 100);
     const levelId = String(req.body.levelId ?? '').trim();
     const opinion = Number.parseInt(req.body.opinion, 10);
-    const videoUrl = fixVideoUrl(String(req.body.videoUrl || '').trim());
+    const normalizedVideo = normalizeVideoSubmission(req.body.videoUrl);
     const rawFootageUrl = String(req.body.rawFootageUrl || '').trim();
     const enjoymentRating = list === 'impossible' ? null : normalizeEnjoymentRating(req.body.enjoymentRating, 100);
     const comments = cleanProfileText(req.body.comments, 1000);
@@ -2787,14 +3223,40 @@ app.patch('/api/verifications/pending/:verifId', async (req, res) => {
     if (!Number.isInteger(verifId)) return res.status(400).json({ error: 'Invalid verification.' });
     if (!name || !author || !levelId) return res.status(400).json({ error: 'Level name, creator, and ID are required.' });
     if (!Number.isInteger(opinion) || opinion < 1 || opinion > 150) return res.status(400).json({ error: 'Placement must be between 1 and 150.' });
-    if (!isValidHttpUrl(videoUrl)) return res.status(400).json({ error: 'Please enter a valid verification video URL.' });
+    if (!normalizedVideo) return res.status(400).json({ error: 'Please enter a valid verification video URL.' });
     if (rawFootageUrl && !isValidHttpUrl(rawFootageUrl)) return res.status(400).json({ error: 'Please enter a valid raw-footage URL.' });
     if (list !== 'impossible' && req.body.enjoymentRating !== '' && req.body.enjoymentRating != null && enjoymentRating === null) {
         return res.status(400).json({ error: 'Enjoyment rating must be between 1 and 10.' });
     }
 
+    const client = await pool.connect();
     try {
-        const result = await pool.query(`
+        await client.query('BEGIN');
+        const restriction = await getSubmissionRestriction(client, req.session.userId);
+        if (restriction) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: restriction });
+        }
+
+        const existing = await client.query(`
+            SELECT id
+            FROM verifications
+            WHERE id = $1 AND user_id = $2 AND status = 'pending' AND list_type = $3
+            FOR UPDATE
+        `, [verifId, req.session.userId, list]);
+        if (!existing.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Pending verification not found.' });
+        }
+
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedVideo.key]);
+        const reuse = await findActiveVideoReuse(client, normalizedVideo.key, { excludeVerificationId: verifId });
+        if (reuse) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'That video has already been used.' });
+        }
+
+        await client.query(`
             UPDATE verifications
             SET level_name = $1,
                 level_author = $2,
@@ -2804,16 +3266,19 @@ app.patch('/api/verifications/pending/:verifId', async (req, res) => {
                 placement_opinion = $6,
                 enjoyment_rating = $7,
                 submission_comments = $8
-            WHERE id = $9 AND user_id = $10 AND status = 'pending' AND list_type = $11
-            RETURNING id
-        `, [name, author, levelId, videoUrl, rawFootageUrl || null, opinion, enjoymentRating, comments || null, verifId, req.session.userId, list]);
-        if (!result.rows.length) return res.status(404).json({ error: 'Pending verification not found.' });
-        res.json({ message: 'Pending verification updated.' });
+            WHERE id = $9
+        `, [name, author, levelId, normalizedVideo.cleanUrl, rawFootageUrl || null, opinion, enjoymentRating, comments || null, verifId]);
+        await client.query('COMMIT');
+        return res.json({ message: 'Pending verification updated.' });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error('Pending verification update error:', err);
-        res.status(500).json({ error: 'Could not update pending verification.' });
+        return res.status(500).json({ error: 'Could not update pending verification.' });
+    } finally {
+        client.release();
     }
 });
+
 
 app.delete('/api/verifications/pending/:verifId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -2892,6 +3357,14 @@ app.post('/api/admin/reject-verification', isAdmin, async (req, res) => {
             "UPDATE verifications SET status = $1, rejection_reason = $2 WHERE id = $3 AND status = 'pending'",
             ['rejected', reason || null, verifId]
         );
+
+        await logModerationAction(client, {
+            moderatorId: actorId,
+            submissionType: 'verification',
+            decision: 'rejected',
+            listType: list_type,
+            submissionId: Number(verifId),
+        });
 
         await createInboxNotification(client, {
             userId: user_id,
@@ -2987,6 +3460,14 @@ app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
             recordId = newRecord.rows[0].id;
         }
 
+        await logModerationAction(client, {
+            moderatorId: actorId,
+            submissionType: 'verification',
+            decision: 'accepted',
+            listType: verification.list_type,
+            submissionId: Number(verifId),
+        });
+
         await createInboxNotification(client, {
             userId: verification.user_id,
             actorId,
@@ -3013,6 +3494,79 @@ app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
         client.release();
     }
 });
+
+app.get('/api/admin/moderator-leaderboard', isAdmin, async (req, res) => {
+    const range = String(req.query.range || 'all').toLowerCase();
+    const validRanges = new Set(['today', 'week', 'month', 'all']);
+    if (!validRanges.has(range)) {
+        return res.status(400).json({ error: 'Invalid leaderboard range.' });
+    }
+
+    const submissionType = String(req.query.submissionType || 'record').toLowerCase();
+    if (!['record', 'verification'].includes(submissionType)) {
+        return res.status(400).json({ error: 'Invalid submission type.' });
+    }
+
+    let since = null;
+    if (range !== 'all') {
+        const parsed = new Date(String(req.query.since || ''));
+        if (Number.isNaN(parsed.getTime())) {
+            return res.status(400).json({ error: 'Invalid leaderboard start date.' });
+        }
+        since = parsed.toISOString();
+    }
+
+    try {
+        const allowedRoles = submissionType === 'verification'
+            ? ['admin', 'owner']
+            : ['moderator', 'admin', 'owner'];
+
+        const result = await pool.query(`
+            SELECT
+                u.id,
+                u.username,
+                LOWER(COALESCE(u.role, '')) AS role,
+                u.icon_type,
+                u.icon_id,
+                u.color1,
+                u.color2,
+                u.glow,
+                COALESCE(stats.accepted, 0)::integer AS accepted,
+                COALESCE(stats.rejected, 0)::integer AS rejected,
+                (COALESCE(stats.accepted, 0) + COALESCE(stats.rejected, 0))::integer AS total
+            FROM users u
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(*) FILTER (WHERE action->>'decision' = 'accepted') AS accepted,
+                    COUNT(*) FILTER (WHERE action->>'decision' = 'rejected') AS rejected
+                FROM jsonb_array_elements(COALESCE(u.moderation_actions, '[]'::jsonb)) AS action
+                WHERE ($1::timestamptz IS NULL OR (action->>'at')::timestamptz >= $1::timestamptz)
+                  AND action->>'type' = $2::text
+            ) stats ON TRUE
+            WHERE LOWER(COALESCE(u.role, '')) = ANY($3::text[])
+            ORDER BY total DESC, accepted DESC, LOWER(u.username) ASC
+        `, [since, submissionType, allowedRoles]);
+
+        res.json({
+            range,
+            submissionType,
+            staff: result.rows.map(row => ({
+                ...row,
+                icon: {
+                    type: row.icon_type || 'cube',
+                    id: readProfileInt(row.icon_id, 1),
+                    color1: readProfileInt(row.color1, 12),
+                    color2: readProfileInt(row.color2, 3),
+                    glow: readProfileInt(row.glow, -1),
+                },
+            })),
+        });
+    } catch (err) {
+        console.error('Staff leaderboard error:', err);
+        res.status(500).json({ error: 'Could not load staff leaderboard.' });
+    }
+});
+
 
 app.get('/moderators', isMod, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'moderators.html'));
@@ -3590,74 +4144,93 @@ app.post('/api/settings/email', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
 
     const email = normalizeEmail(req.body.email);
+    const emailIdentity = getEmailIdentity(email);
     const currentPassword = String(req.body.currentPassword || '');
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return res.status(400).json({ error: "Please enter a valid email address." });
+    }
+    if (!emailIdentity) {
+        return res.status(400).json({ error: "Email validation failed. Please try a different email." });
     }
     if (!currentPassword) {
         return res.status(400).json({ error: "Enter your current password to change your email." });
     }
 
     let verificationToken = null;
+    let username = null;
+    const client = await pool.connect();
     try {
-        const userResult = await pool.query(
-            'SELECT id, username, password_hash, email FROM users WHERE id = $1',
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [emailIdentity]);
+
+        const userResult = await client.query(
+            'SELECT id, username, password_hash, email FROM users WHERE id = $1 FOR UPDATE',
             [req.session.userId]
         );
         const user = userResult.rows[0];
-        if (!user) return res.status(404).json({ error: "User not found." });
+        if (!user) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: "User not found." });
+        }
+        username = user.username;
 
         const validPassword = await bcrypt.compare(currentPassword, user.password_hash);
-        if (!validPassword) return res.status(400).json({ error: "Current password incorrect." });
-        if (normalizeEmail(user.email) === email) {
+        if (!validPassword) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: "Current password incorrect." });
+        }
+        if (getEmailIdentity(user.email) === emailIdentity) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: "That is already your current email address." });
         }
 
-        const duplicate = await pool.query(`
-            SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND id != $2
+        const duplicate = await client.query(`
+            SELECT id FROM users WHERE ${emailIdentitySql('email')} = $1 AND id != $2
             UNION ALL
-            SELECT NULL AS id FROM pending_users WHERE LOWER(email) = LOWER($1)
+            SELECT NULL AS id FROM pending_users WHERE ${emailIdentitySql('email')} = $1
             UNION ALL
             SELECT user_id AS id
             FROM pending_email_changes
-            WHERE LOWER(email) = LOWER($1)
+            WHERE ${emailIdentitySql('email')} = $1
               AND user_id != $2
               AND expires_at > NOW()
             LIMIT 1
-        `, [email, req.session.userId]);
+        `, [emailIdentity, req.session.userId]);
         if (duplicate.rows.length) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: "That email is already in use." });
         }
 
         verificationToken = randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-        await pool.query('DELETE FROM pending_email_changes WHERE expires_at <= NOW() OR user_id = $1', [
+        await client.query('DELETE FROM pending_email_changes WHERE expires_at <= NOW() OR user_id = $1', [
             req.session.userId,
         ]);
-        await pool.query(`
+        await client.query(`
             INSERT INTO pending_email_changes (token, user_id, email, expires_at)
             VALUES ($1, $2, $3, $4)
         `, [verificationToken, req.session.userId, email, expiresAt]);
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Email update error:', err);
+        return res.status(500).json({ error: "Could not prepare the email verification message." });
+    } finally {
+        client.release();
+    }
 
-        const verifyLink = `https://webdemonlist.org/verify?token=${verificationToken}&type=email-change`;
-        try {
-            await sendEmailChangeVerification(email, user.username, verifyLink);
-        } catch (emailError) {
-            await pool.query('DELETE FROM pending_email_changes WHERE token = $1', [verificationToken]);
-            throw emailError;
-        }
-
-        res.json({
+    const verifyLink = `https://webdemonlist.org/verify?token=${verificationToken}&type=email-change`;
+    try {
+        await sendEmailChangeVerification(email, username, verifyLink);
+        return res.json({
             message: "Verification sent to the provided email.",
             pendingEmail: email,
         });
-    } catch (err) {
-        if (err.code === '23505') {
-            return res.status(400).json({ error: "That email is already in use." });
-        }
-        console.error('Email update error:', err);
-        res.status(500).json({ error: "Could not send the email verification message." });
+    } catch (emailError) {
+        await pool.query('DELETE FROM pending_email_changes WHERE token = $1', [verificationToken]).catch(() => {});
+        console.error('Email update error:', emailError);
+        return res.status(500).json({ error: "Could not send the email verification message." });
     }
 });
 
@@ -3777,6 +4350,29 @@ app.post('/api/notifications/read', async (req, res) => {
     } catch (err) {
         console.error('Notification read error:', err);
         res.sendStatus(500);
+    }
+});
+
+
+app.delete('/api/notifications/:id', async (req, res) => {
+    if (!req.session.userId) return res.sendStatus(401);
+    const notificationId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(notificationId)) {
+        return res.status(400).json({ error: 'Invalid notification.' });
+    }
+
+    try {
+        const result = await pool.query(
+            'DELETE FROM notifications WHERE id = $1 AND user_id = $2 RETURNING id',
+            [notificationId, req.session.userId]
+        );
+        if (!result.rows.length) {
+            return res.status(404).json({ error: 'Notification not found.' });
+        }
+        res.json({ message: 'Notification deleted.' });
+    } catch (err) {
+        console.error('Notification delete error:', err);
+        res.status(500).json({ error: 'Could not delete notification.' });
     }
 });
 
@@ -4056,8 +4652,8 @@ app.post('/api/submit-verification', async (req, res) => {
     const normalizedEnjoyment = list === 'impossible'
         ? null
         : normalizeEnjoymentRating(enjoymentRating, 100);
-    const fixedVideoUrl = fixVideoUrl(videoUrl);
-    if (!isValidHttpUrl(fixedVideoUrl)) {
+    const normalizedVideo = normalizeVideoSubmission(videoUrl);
+    if (!normalizedVideo) {
         return res.status(400).json({ error: "Please enter a valid verification video URL." });
     }
     if (rawFootageUrl && !isValidHttpUrl(rawFootageUrl)) {
@@ -4074,19 +4670,53 @@ app.post('/api/submit-verification', async (req, res) => {
         return res.status(400).json({ error: "Enjoyment rating must be between 1 and 10." });
     }
 
+    const client = await pool.connect();
     try {
-        await pool.query(
+        await client.query('BEGIN');
+        const restriction = await getSubmissionRestriction(client, userId);
+        if (restriction) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: restriction });
+        }
+
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedVideo.key]);
+        const reuse = await findActiveVideoReuse(client, normalizedVideo.key);
+        if (reuse) {
+            await client.query('ROLLBACK');
+            return res.json({ message: "Verification submitted successfully!" }); // Not really, the video was already used LMAO
+        }
+
+        const insertedVerification = await client.query(
             `INSERT INTO verifications
                 (user_id, level_name, level_author, level_id, video_url, raw_footage_url, placement_opinion, list_type, enjoyment_rating, submission_comments)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [userId, name, author, levelId, fixedVideoUrl, rawFootageUrl || null, placementOpinion, list, normalizedEnjoyment, comments || null]
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             RETURNING id`,
+            [userId, name, author, levelId, normalizedVideo.cleanUrl, rawFootageUrl || null, placementOpinion, list, normalizedEnjoyment, comments || null]
         );
-        res.json({ message: "Verification submitted successfully!" });
+        const verificationId = Number(insertedVerification.rows[0]?.id);
+        await client.query('COMMIT');
+
+        await notifyVerificationSubscribers({
+            verificationId,
+            submitterId: userId,
+            levelName: String(name || '').trim(),
+            levelAuthor: String(author || '').trim(),
+            levelId,
+            placementOpinion,
+            videoUrl: normalizedVideo.cleanUrl,
+            listType: list,
+        });
+
+        return res.json({ message: "Verification submitted successfully!" });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error(err);
-        res.status(500).json({ error: "Database error during submission." });
+        return res.status(500).json({ error: "Database error during submission." });
+    } finally {
+        client.release();
     }
 });
+
 
 const CLAN_NAME_PATTERN = /^[A-Za-z0-9]{1,4}$/;
 const CLAN_MAX_MEMBERS = 6;
