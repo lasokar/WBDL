@@ -616,6 +616,7 @@ async function logModerationAction(db, {
     decision,
     listType = 'primary',
     submissionId = null,
+    submitterId = null,
 }) {
     if (!moderatorId) return null;
     if (!['record', 'verification'].includes(submissionType)) return null;
@@ -630,11 +631,12 @@ async function logModerationAction(db, {
                     'decision', $3::text,
                     'listType', $4::text,
                     'submissionId', $5::integer,
+                    'submitterId', $6::integer,
                     'at', CURRENT_TIMESTAMP
                 )
             )
         WHERE id = $1
-    `, [moderatorId, submissionType, decision, listType, submissionId]);
+    `, [moderatorId, submissionType, decision, listType, submissionId, submitterId]);
 }
 
 
@@ -2524,6 +2526,7 @@ app.patch('/api/admin/users/:userId/records/:recordId', isAdmin, async (req, res
                 decision: status,
                 listType: list,
                 submissionId: recordId,
+                submitterId: targetUserId,
             });
         }
 
@@ -2817,6 +2820,7 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
             decision: status,
             listType: record.list_type,
             submissionId: Number(recordId),
+            submitterId: record.user_id,
         });
 
         const accepted = status === 'accepted';
@@ -3364,6 +3368,7 @@ app.post('/api/admin/reject-verification', isAdmin, async (req, res) => {
             decision: 'rejected',
             listType: list_type,
             submissionId: Number(verifId),
+            submitterId: user_id,
         });
 
         await createInboxNotification(client, {
@@ -3466,6 +3471,7 @@ app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
             decision: 'accepted',
             listType: verification.list_type,
             submissionId: Number(verifId),
+            submitterId: verification.user_id,
         });
 
         await createInboxNotification(client, {
@@ -3542,6 +3548,33 @@ app.get('/api/admin/moderator-leaderboard', isAdmin, async (req, res) => {
                 FROM jsonb_array_elements(COALESCE(u.moderation_actions, '[]'::jsonb)) AS action
                 WHERE ($1::timestamptz IS NULL OR (action->>'at')::timestamptz >= $1::timestamptz)
                   AND action->>'type' = $2::text
+                  AND (
+                    CASE
+                        WHEN NULLIF(action->>'submitterId', '') IS NOT NULL THEN EXISTS (
+                            SELECT 1
+                            FROM users submitter
+                            WHERE submitter.id = NULLIF(action->>'submitterId', '')::integer
+                              AND COALESCE(submitter.account_disabled, FALSE) = FALSE
+                        )
+                        WHEN NULLIF(action->>'submissionId', '') IS NOT NULL
+                             AND $2::text = 'record' THEN EXISTS (
+                            SELECT 1
+                            FROM records source_record
+                            JOIN users submitter ON submitter.id = source_record.user_id
+                            WHERE source_record.id = NULLIF(action->>'submissionId', '')::integer
+                              AND COALESCE(submitter.account_disabled, FALSE) = FALSE
+                        )
+                        WHEN NULLIF(action->>'submissionId', '') IS NOT NULL
+                             AND $2::text = 'verification' THEN EXISTS (
+                            SELECT 1
+                            FROM verifications source_verification
+                            JOIN users submitter ON submitter.id = source_verification.user_id
+                            WHERE source_verification.id = NULLIF(action->>'submissionId', '')::integer
+                              AND COALESCE(submitter.account_disabled, FALSE) = FALSE
+                        )
+                        ELSE TRUE
+                    END
+                  )
             ) stats ON TRUE
             WHERE LOWER(COALESCE(u.role, '')) = ANY($3::text[])
             ORDER BY total DESC, accepted DESC, LOWER(u.username) ASC
