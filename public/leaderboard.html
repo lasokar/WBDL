@@ -29,6 +29,125 @@
         }
         .leaderboard-header p { color: var(--text-muted); }
 
+        .leaderboard-search {
+            position: relative;
+            width: min(520px, 100%);
+            margin: -8px auto 24px;
+            z-index: 10;
+        }
+
+        .leaderboard-search-input {
+            width: 100%;
+            height: 46px;
+            box-sizing: border-box;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+            color: var(--text);
+            padding: 0 16px;
+            font: inherit;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.15s, background 0.15s;
+        }
+
+        .leaderboard-search-input::placeholder {
+            color: var(--text-faint);
+        }
+
+        .leaderboard-search-input:focus {
+            border-color: var(--accent);
+            background: var(--surface-2);
+        }
+
+        .leaderboard-search-results {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: calc(100% + 8px);
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+        }
+
+        .leaderboard-search-results[hidden] {
+            display: none !important;
+        }
+
+        .leaderboard-search-result {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            min-height: 54px;
+            padding: 8px 12px;
+            box-sizing: border-box;
+            color: var(--text);
+            text-decoration: none;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.12s;
+        }
+
+        .leaderboard-search-result:last-child {
+            border-bottom: 0;
+        }
+
+        .leaderboard-search-result:hover,
+        .leaderboard-search-result:focus {
+            background: var(--surface-2);
+            outline: none;
+        }
+
+        .leaderboard-search-result .user-icon-host {
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+        }
+
+        .leaderboard-search-result .user-icon-host .gd-icon-canvas {
+            width: 34px;
+            height: 34px;
+            max-width: 34px;
+            max-height: 34px;
+        }
+
+        .leaderboard-search-result-info {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .leaderboard-search-result-name {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+            font-weight: 650;
+        }
+
+        .leaderboard-search-result-name span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .leaderboard-search-result-name .user-role-badge {
+            width: 19px;
+            height: 19px;
+        }
+
+        .leaderboard-search-result-id,
+        .leaderboard-search-status {
+            color: var(--text-muted);
+            font-size: 0.78rem;
+        }
+
+        .leaderboard-search-status {
+            padding: 13px 14px;
+            text-align: center;
+        }
+
         .leaderboard-table {
             width: 100%;
             border-collapse: collapse;
@@ -160,6 +279,21 @@
             <h1>Stats Viewer</h1>
             <p style="color: #666;">Do y'all have a life?</p>
         </header>
+
+        <div class="leaderboard-search" id="leaderboard-search">
+            <input
+                id="leaderboard-search-input"
+                class="leaderboard-search-input"
+                type="text"
+                placeholder="Search by username or user ID"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="Search leaderboard players"
+                aria-controls="leaderboard-search-results"
+                aria-expanded="false"
+            >
+            <div id="leaderboard-search-results" class="leaderboard-search-results" hidden></div>
+        </div>
 
         <table class="leaderboard-table">
             <thead>
@@ -695,6 +829,116 @@
                 completionsTh.remove();
             }
         }
+
+        const leaderboardSearchInput = document.getElementById('leaderboard-search-input');
+        const leaderboardSearchResults = document.getElementById('leaderboard-search-results');
+        let leaderboardSearchTimer = null;
+        let leaderboardSearchController = null;
+        let leaderboardSearchRequestId = 0;
+
+        function closeLeaderboardSearch() {
+            leaderboardSearchResults.hidden = true;
+            leaderboardSearchResults.innerHTML = '';
+            leaderboardSearchInput.setAttribute('aria-expanded', 'false');
+        }
+
+        function renderLeaderboardSearchResults(players, requestId) {
+            if (requestId !== leaderboardSearchRequestId) return;
+
+            if (!Array.isArray(players) || players.length === 0) {
+                leaderboardSearchResults.innerHTML = '<div class="leaderboard-search-status">No players found.</div>';
+                leaderboardSearchResults.hidden = false;
+                leaderboardSearchInput.setAttribute('aria-expanded', 'true');
+                return;
+            }
+
+            leaderboardSearchResults.innerHTML = players.map((player, idx) => {
+                const username = String(player.username || '');
+                const badgeSrc = getRoleBadgeSrc(player.role);
+                const badgeHtml = badgeSrc
+                    ? `<img class="user-role-badge" src="${badgeSrc}" alt="${escapeHtml(player.role)}">`
+                    : '';
+
+                return `
+                    <a class="leaderboard-search-result" href="/profile?user=${encodeURIComponent(username)}">
+                        <span class="user-icon-host" id="leaderboard-search-icon-${requestId}-${idx}" aria-hidden="true"></span>
+                        <span class="leaderboard-search-result-info">
+                            <span class="leaderboard-search-result-name">
+                                ${badgeHtml}
+                                <span>${escapeHtml(username)}</span>
+                            </span>
+                            <span class="leaderboard-search-result-id">User ID: ${Number(player.user_id) || 0}</span>
+                        </span>
+                    </a>
+                `;
+            }).join('');
+
+            leaderboardSearchResults.hidden = false;
+            leaderboardSearchInput.setAttribute('aria-expanded', 'true');
+
+            players.forEach((player, idx) => {
+                WBDLIconRenderer.renderInto(
+                    document.getElementById(`leaderboard-search-icon-${requestId}-${idx}`),
+                    getUserIcon(player),
+                    { quality: 'uhd' }
+                );
+            });
+        }
+
+        async function searchLeaderboardPlayers() {
+            const query = leaderboardSearchInput.value.trim();
+            if (!query) {
+                if (leaderboardSearchController) leaderboardSearchController.abort();
+                closeLeaderboardSearch();
+                return;
+            }
+
+            if (leaderboardSearchController) leaderboardSearchController.abort();
+            leaderboardSearchController = new AbortController();
+            const requestId = ++leaderboardSearchRequestId;
+
+            leaderboardSearchResults.innerHTML = '<div class="leaderboard-search-status">Searching...</div>';
+            leaderboardSearchResults.hidden = false;
+            leaderboardSearchInput.setAttribute('aria-expanded', 'true');
+
+            try {
+                const response = await fetch(`/api/leaderboard/search?q=${encodeURIComponent(query)}`, {
+                    signal: leaderboardSearchController.signal
+                });
+                if (!response.ok) throw new Error('Search failed.');
+                const players = await response.json();
+                renderLeaderboardSearchResults(players, requestId);
+            } catch (err) {
+                if (err?.name === 'AbortError') return;
+                if (requestId !== leaderboardSearchRequestId) return;
+                leaderboardSearchResults.innerHTML = '<div class="leaderboard-search-status">Could not search players.</div>';
+                leaderboardSearchResults.hidden = false;
+                leaderboardSearchInput.setAttribute('aria-expanded', 'true');
+            }
+        }
+
+        leaderboardSearchInput.addEventListener('input', () => {
+            clearTimeout(leaderboardSearchTimer);
+            leaderboardSearchTimer = setTimeout(searchLeaderboardPlayers, 140);
+        });
+
+        leaderboardSearchInput.addEventListener('focus', () => {
+            if (leaderboardSearchInput.value.trim()) {
+                clearTimeout(leaderboardSearchTimer);
+                leaderboardSearchTimer = setTimeout(searchLeaderboardPlayers, 80);
+            }
+        });
+
+        leaderboardSearchInput.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                closeLeaderboardSearch();
+                leaderboardSearchInput.blur();
+            }
+        });
+
+        document.addEventListener('click', event => {
+            if (!event.target.closest('#leaderboard-search')) closeLeaderboardSearch();
+        });
 
         async function loadLeaderboard() {
             try {

@@ -114,6 +114,7 @@
             overflow: hidden;
         }
 
+        .demon-banner-image,
         .demon-banner-video {
             position: absolute;
             inset: 0;
@@ -125,10 +126,20 @@
             filter: brightness(0.18) saturate(0.9);
             opacity: 0.92;
             pointer-events: none;
-            transition: filter 0.15s ease;
+            transition: filter 0.15s ease, opacity 0.12s ease;
         }
 
+        .demon-banner-video {
+            opacity: 0;
+        }
+
+        .demon-banner-video.is-active {
+            opacity: 0.92;
+        }
+
+        .demon-card:hover .demon-banner-image,
         .demon-card:hover .demon-banner-video,
+        .demon-card:focus-within .demon-banner-image,
         .demon-card:focus-within .demon-banner-video {
             filter: brightness(0.34) saturate(0.9);
         }
@@ -801,9 +812,26 @@
             if (frame) frame.src = getEmbeddedDemonUrl(id);
         }
 
-        function selectDemon(id) {
+        function openDemonInNewTab(id) {
+            const link = document.createElement('a');
+            link.href = getDirectDemonUrl(id);
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        }
+
+        function selectDemon(id, clickEvent = null) {
+            if (clickEvent?.shiftKey) {
+                clickEvent.preventDefault();
+                openDemonInNewTab(id);
+                return;
+            }
+
             if (!isDesktopEmbeddedLayout()) {
-                window.open(getDirectDemonUrl(id), '_blank', 'noopener');
+                openDemonInNewTab(id);
                 return;
             }
 
@@ -924,22 +952,26 @@
                 const src = bannerById.get(String(card.dataset.demonId || ''));
                 if (!src) return;
 
-                video.preload = 'auto';
-                video.src = src;
-                video.load();
+                video.preload = 'none';
+                video.dataset.src = src;
 
                 const playBanner = () => {
+                    if (!video.getAttribute('src')) {
+                        video.src = video.dataset.src;
+                        video.load();
+                    }
                     const promise = video.play();
-                    if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+                    if (promise && typeof promise.then === 'function') {
+                        promise.then(() => video.classList.add('is-active')).catch(() => {});
+                    }
                 };
+
                 const resetBanner = () => {
+                    video.classList.remove('is-active');
                     video.pause();
                     const seekToStart = () => {
-                        try {
-                            video.currentTime = 0;
-                        } catch (_) {}
+                        try { video.currentTime = 0; } catch (_) {}
                     };
-
                     if (video.readyState >= 1) seekToStart();
                     else video.addEventListener('loadedmetadata', seekToStart, { once: true });
                 };
@@ -948,7 +980,9 @@
                 card.addEventListener('mouseleave', resetBanner);
                 card.addEventListener('focusin', playBanner);
                 card.addEventListener('focusout', resetBanner);
+                video.addEventListener('playing', () => video.classList.add('is-active'));
                 video.addEventListener('error', () => {
+                    video.classList.remove('is-active');
                     video.style.display = 'none';
                 }, { once: true });
             });
@@ -1043,7 +1077,8 @@
                 const isCompleted = !isPlaceholder && completedDemonIds.has(Number(demon.id));
                 const cardHtml = `
                     <div class="demon-card ${isPlaceholder ? 'time-machine-placeholder' : ''} ${isCompleted ? 'completed-level' : ''}" data-demon-id="${isPlaceholder ? '' : demon.id}">
-                        ${!isPlaceholder && demon.banner_url ? '<video class="demon-banner-video" muted loop playsinline preload="auto" aria-hidden="true"></video>' : ''}
+                        ${!isPlaceholder && demon.banner_url ? `<img class="demon-banner-image" src="/api/demons/${encodeURIComponent(demon.id)}/banner-image?v=${encodeURIComponent(demon.banner_image_updated_at || demon.banner_url)}" alt="" aria-hidden="true">` : ''}
+                        ${!isPlaceholder && demon.banner_url ? '<video class="demon-banner-video" muted loop playsinline preload="none" aria-hidden="true"></video>' : ''}
                         <div class="thumbnail-box">
                             <img id="${imgId}" src="${thumbUrl}" alt="${demon.name} thumbnail">
                         </div>
@@ -1068,8 +1103,8 @@
                 const directUrl = getDirectDemonUrl(demon.id);
                 const embeddedUrl = getEmbeddedDemonUrl(demon.id);
                 const linkAttrs = isDesktopEmbeddedLayout()
-                    ? `href="${embeddedUrl}" onclick="selectDemon('${demon.id}'); return false;"`
-                    : `href="${directUrl}" target="_blank" rel="noopener"`;
+                    ? `href="${embeddedUrl}" onclick="selectDemon('${demon.id}', event); return false;"`
+                    : `href="${directUrl}" target="_blank" rel="noopener" onclick="if (event.shiftKey) { event.preventDefault(); openDemonInNewTab('${demon.id}'); return false; }"`;
 
                 return `${separatorHtml}<a ${linkAttrs} style="text-decoration: none; color: inherit; display: block;">${cardHtml}</a>`;
             }).join('');

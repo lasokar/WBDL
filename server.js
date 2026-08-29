@@ -3,9 +3,15 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const dns = require('dns');
+const net = require('net');
+const http = require('http');
+const https = require('https');
 const axios = require('axios');
 const { randomBytes } = require('crypto');
 const ffmpeg = require('fluent-ffmpeg');
+if (process.env.FFMPEG_PATH) ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH);
 require('dotenv').config();
 const app = express();
 app.use(cors({
@@ -32,6 +38,204 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+
+
+const BANNER_PREVIEW_MAX_BYTES = 200 * 1024 * 1024;
+const BANNER_PREVIEW_DOWNLOAD_TIMEOUT_MS = 25000;
+const BANNER_PREVIEW_FFMPEG_TIMEOUT_MS = 25000;
+const bannerPreviewJobs = new Map();
+
+function isPublicBannerIp(address) {
+    const family = net.isIP(address);
+    if (!family) return false;
+    if (family === 4) {
+        const parts = address.split('.').map(Number);
+        const [a, b, c] = parts;
+        if (a === 0 || a === 10 || a === 127) return false;
+        if (a === 100 && b >= 64 && b <= 127) return false;
+        if (a === 169 && b === 254) return false;
+        if (a === 172 && b >= 16 && b <= 31) return false;
+        if (a === 192 && b === 168) return false;
+        if (a === 192 && b === 0 && c === 0) return false;
+        if (a === 192 && b === 0 && c === 2) return false;
+        if (a === 198 && (b === 18 || b === 19)) return false;
+        if (a === 198 && b === 51 && c === 100) return false;
+        if (a === 203 && b === 0 && c === 113) return false;
+        if (a >= 224) return false;
+        return true;
+    }
+    const normalized = address.toLowerCase().split('%')[0];
+    if (normalized === '::' || normalized === '::1') return false;
+    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return false;
+    if (/^fe[89ab]/.test(normalized)) return false;
+    if (normalized.startsWith('ff') || normalized.startsWith('2001:db8:')) return false;
+    if (normalized.startsWith('::ffff:')) return isPublicBannerIp(normalized.slice(7));
+    return true;
+}
+
+function safeBannerLookup(hostname, options, callback) {
+    dns.lookup(hostname, { all: true, verbatim: true }, (err, addresses) => {
+        if (err) return callback(err);
+        const safe = (addresses || []).find(entry => isPublicBannerIp(entry.address));
+        if (!safe) return callback(new Error('Banner host does not resolve to a public address.'));
+        if (options && options.all) return callback(null, [safe]);
+        callback(null, safe.address, safe.family);
+    });
+}
+
+const bannerHttpAgent = new http.Agent({ keepAlive: true, lookup: safeBannerLookup });
+const bannerHttpsAgent = new https.Agent({ keepAlive: true, lookup: safeBannerLookup });
+
+function validateBannerMediaUrl(value) {
+    const parsed = new URL(String(value || '').trim());
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Banner URL must use HTTP or HTTPS.');
+    if (parsed.username || parsed.password) throw new Error('Banner URL credentials are not allowed.');
+    if (net.isIP(parsed.hostname) && !isPublicBannerIp(parsed.hostname)) throw new Error('Banner URL must use a public host.');
+    return parsed.toString();
+}
+
+function validateBannerRedirect(options) {
+    const hostname = String(options?.hostname || options?.host || '').replace(/^\[|\]$/g, '');
+    if (hostname && net.isIP(hostname) && !isPublicBannerIp(hostname)) {
+        throw new Error('Banner redirect points to a non-public host.');
+    }
+}
+
+async function downloadBannerVideoToTemp(rawUrl) {
+    const bannerUrl = validateBannerMediaUrl(rawUrl);
+    const inputPath = path.join(os.tmpdir(), `wbdl-banner-${randomBytes(12).toString('hex')}.bin`);
+    const response = await axios.get(bannerUrl, {
+        responseType: 'stream',
+        timeout: BANNER_PREVIEW_DOWNLOAD_TIMEOUT_MS,
+        maxRedirects: 4,
+        maxContentLength: BANNER_PREVIEW_MAX_BYTES,
+        maxBodyLength: BANNER_PREVIEW_MAX_BYTES,
+        httpAgent: bannerHttpAgent,
+        httpsAgent: bannerHttpsAgent,
+        beforeRedirect: validateBannerRedirect,
+        headers: { 'User-Agent': 'WBDL-BannerPreview/1.0' },
+        validateStatus: status => status >= 200 && status < 300,
+    });
+
+    const contentLength = Number(response.headers['content-length'] || 0);
+    if (contentLength && contentLength > BANNER_PREVIEW_MAX_BYTES) {
+        response.data.destroy();
+        throw new Error('Banner video is too large to build a preview.');
+    }
+
+    try {
+        await new Promise((resolve, reject) => {
+            const output = fs.createWriteStream(inputPath, { flags: 'wx' });
+            let received = 0;
+            let settled = false;
+            const fail = err => {
+                if (settled) return;
+                settled = true;
+                response.data.destroy();
+                output.destroy();
+                reject(err);
+            };
+            response.data.on('data', chunk => {
+                received += chunk.length;
+                if (received > BANNER_PREVIEW_MAX_BYTES) fail(new Error('Banner video is too large to build a preview.'));
+            });
+            response.data.on('error', fail);
+            output.on('error', fail);
+            output.on('finish', () => {
+                if (settled) return;
+                settled = true;
+                resolve();
+            });
+            response.data.pipe(output);
+        });
+        return inputPath;
+    } catch (err) {
+        await fs.promises.unlink(inputPath).catch(() => {});
+        throw err;
+    }
+}
+
+async function extractBannerJpeg(inputPath) {
+    const outputPath = path.join(os.tmpdir(), `wbdl-banner-frame-${randomBytes(12).toString('hex')}.jpg`);
+    try {
+        await new Promise((resolve, reject) => {
+            const command = ffmpeg(inputPath)
+                .frames(1)
+                .size('1280x?')
+                .outputOptions('-q:v 5')
+                .output(outputPath);
+            let settled = false;
+            const timer = setTimeout(() => {
+                if (!settled) command.kill('SIGKILL');
+            }, BANNER_PREVIEW_FFMPEG_TIMEOUT_MS);
+            command.on('end', () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve();
+            });
+            command.on('error', err => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                reject(err);
+            });
+            command.run();
+        });
+        return await fs.promises.readFile(outputPath);
+    } finally {
+        fs.promises.unlink(outputPath).catch(() => {});
+    }
+}
+
+async function captureBannerPreview(rawUrl) {
+    const inputPath = await downloadBannerVideoToTemp(rawUrl);
+    try {
+        return await extractBannerJpeg(inputPath);
+    } finally {
+        fs.promises.unlink(inputPath).catch(() => {});
+    }
+}
+
+function runBannerPreviewJob(key, worker) {
+    if (bannerPreviewJobs.has(key)) return bannerPreviewJobs.get(key);
+    const job = Promise.resolve().then(worker).finally(() => bannerPreviewJobs.delete(key));
+    bannerPreviewJobs.set(key, job);
+    return job;
+}
+
+async function ensureBannerPreviewImage(demonId, list) {
+    const result = await pool.query(`
+        SELECT banner_url, banner_image, banner_image_source_url
+        FROM demons
+        WHERE id = $1 AND list_type = $2
+    `, [demonId, list]);
+    const row = result.rows[0];
+    if (!row?.banner_url) return null;
+    if (row.banner_image && row.banner_image_source_url === row.banner_url) return row.banner_image;
+
+    return runBannerPreviewJob(`${list}:${demonId}`, async () => {
+        const latestResult = await pool.query(`
+            SELECT banner_url, banner_image, banner_image_source_url
+            FROM demons
+            WHERE id = $1 AND list_type = $2
+        `, [demonId, list]);
+        const latest = latestResult.rows[0];
+        if (!latest?.banner_url) return null;
+        if (latest.banner_image && latest.banner_image_source_url === latest.banner_url) return latest.banner_image;
+
+        const image = await captureBannerPreview(latest.banner_url);
+        const saved = await pool.query(`
+            UPDATE demons
+            SET banner_image = $1,
+                banner_image_source_url = $4,
+                banner_image_updated_at = NOW()
+            WHERE id = $2 AND list_type = $3 AND banner_url = $4
+            RETURNING banner_image
+        `, [image, demonId, list, latest.banner_url]);
+        return saved.rows[0]?.banner_image || image;
+    });
+}
 
 const validateUsername = (username) => {
     if (!username || username.length < 3 || username.length > 20) {
@@ -289,7 +493,9 @@ function undoHistoricalMove(rows, log) {
 async function queryCurrentDemonSnapshotRows(list) {
     const result = await pool.query(`
         SELECT 
-            d.*, 
+            d.id, d.name, d.author, d.position, d.level_id, d.requirement, d.list_type,
+            d.showcase_url, d.banner_url, d.banner_image_updated_at,
+            (d.banner_image IS NOT NULL AND octet_length(d.banner_image) > 0) AS has_banner_image,
             CASE 
                 WHEN $1 = 'impossible' THEN d.showcase_url
                 ELSE (
@@ -3079,25 +3285,33 @@ app.patch('/api/admin/demons/:id/banner', isAdmin, async (req, res) => {
         if (rawBannerUrl.length > 2000) {
             return res.status(400).json({ error: 'Banner video URL is too long.' });
         }
-
         try {
-            const parsed = new URL(rawBannerUrl);
-            if (!['http:', 'https:'].includes(parsed.protocol)) {
-                return res.status(400).json({ error: 'Banner video URL must use http or https.' });
-            }
-            bannerUrl = parsed.toString();
+            bannerUrl = validateBannerMediaUrl(rawBannerUrl);
         } catch (_) {
-            return res.status(400).json({ error: 'Enter a valid banner video URL.' });
+            return res.status(400).json({ error: 'Enter a valid public banner video URL.' });
         }
     }
 
     try {
+        let bannerImage = null;
+        if (bannerUrl) {
+            try {
+                bannerImage = await captureBannerPreview(bannerUrl);
+            } catch (previewErr) {
+                console.error('Banner preview capture error:', previewErr);
+                return res.status(400).json({ error: 'Could not capture a static image from that banner video.' });
+            }
+        }
+
         const result = await pool.query(`
             UPDATE demons
-            SET banner_url = $1
-            WHERE id = $2 AND list_type = $3
-            RETURNING banner_url
-        `, [bannerUrl, demonId, list]);
+            SET banner_url = $1,
+                banner_image = $2,
+                banner_image_source_url = $1,
+                banner_image_updated_at = CASE WHEN $1 IS NULL THEN NULL ELSE NOW() END
+            WHERE id = $3 AND list_type = $4
+            RETURNING banner_url, banner_image_updated_at
+        `, [bannerUrl, bannerImage, demonId, list]);
 
         if (!result.rows.length) {
             return res.status(404).json({ error: 'Level not found.' });
@@ -3106,10 +3320,29 @@ app.patch('/api/admin/demons/:id/banner', isAdmin, async (req, res) => {
         return res.json({
             message: bannerUrl ? 'Banner updated.' : 'Banner removed.',
             banner_url: result.rows[0].banner_url || null,
+            has_banner_image: Boolean(bannerImage),
+            banner_image_updated_at: result.rows[0].banner_image_updated_at || null,
         });
     } catch (err) {
         console.error('Banner update error:', err);
         return res.status(500).json({ error: 'Could not update banner.' });
+    }
+});
+
+app.get('/api/demons/:id/banner-image', async (req, res) => {
+    const demonId = Number.parseInt(req.params.id, 10);
+    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    if (!Number.isInteger(demonId)) return res.status(400).end();
+
+    try {
+        const image = await ensureBannerPreviewImage(demonId, list);
+        if (!image) return res.status(404).end();
+        res.set('Content-Type', 'image/jpeg');
+        res.set('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+        return res.send(image);
+    } catch (err) {
+        console.error('Banner image load error:', err);
+        return res.status(404).end();
     }
 });
 
@@ -3844,6 +4077,67 @@ app.get('/api/profile/:username', async (req, res) => {
     }
 });
 
+app.get('/api/leaderboard/search', async (req, res) => {
+    const rawQuery = String(req.query.q || '').trim().slice(0, 64);
+    if (!rawQuery) return res.json([]);
+
+    const numericId = /^\d+$/.test(rawQuery) && Number(rawQuery) <= 2147483647
+        ? Number(rawQuery)
+        : null;
+    const likeQuery = `%${rawQuery}%`;
+
+    try {
+        const result = await pool.query(`
+            SELECT
+                u.id AS user_id,
+                u.username,
+                u.display_name,
+                u.role,
+                u.icon_type,
+                u.icon_id,
+                u.color1,
+                u.color2,
+                u.glow
+            FROM users u
+            WHERE COALESCE(u.account_disabled, FALSE) = FALSE
+              AND COALESCE(u.leaderboard_banned, FALSE) = FALSE
+              AND (
+                    u.username ILIKE $1
+                    OR COALESCE(u.display_name, '') ILIKE $1
+                    OR ($2::integer IS NOT NULL AND u.id = $2)
+              )
+            ORDER BY
+                CASE WHEN $2::integer IS NOT NULL AND u.id = $2 THEN 0 ELSE 1 END,
+                CASE WHEN LOWER(u.username) = LOWER($3) THEN 0 ELSE 1 END,
+                u.username ASC
+            LIMIT 8
+        `, [likeQuery, numericId, rawQuery]);
+
+        const clanTags = await getClanTagsForUsers(pool, result.rows.map(row => row.user_id));
+        const players = result.rows.map(row => ({
+            user_id: Number(row.user_id),
+            username: row.username,
+            displayName: formatClanDisplayName(
+                row.display_name || row.username,
+                clanTags.get(Number(row.user_id))
+            ),
+            role: row.role || '',
+            icon: {
+                type: row.icon_type || 'cube',
+                id: readProfileInt(row.icon_id, 1),
+                color1: readProfileInt(row.color1, 12),
+                color2: readProfileInt(row.color2, 3),
+                glow: readProfileInt(row.glow, -1),
+            }
+        }));
+
+        res.json(players);
+    } catch (err) {
+        console.error('Leaderboard player search error:', err);
+        res.status(500).json({ error: 'Could not search players.' });
+    }
+});
+
 app.get('/api/leaderboard', async (req, res) => {
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
 
@@ -3979,10 +4273,13 @@ app.get('/api/demons/:id', async (req, res) => {
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
     
     try {
-        const demonResult = await pool.query(
-            'SELECT * FROM demons WHERE id = $1', 
-            [demonId]
-        );
+        const demonResult = await pool.query(`
+            SELECT id, name, author, position, level_id, requirement, list_type, showcase_url,
+                   banner_url, banner_image_updated_at,
+                   (banner_image IS NOT NULL AND octet_length(banner_image) > 0) AS has_banner_image
+            FROM demons
+            WHERE id = $1
+        `, [demonId]);
         
         if (demonResult.rows.length === 0) {
             return res.status(404).json({ error: "Demon not found" });

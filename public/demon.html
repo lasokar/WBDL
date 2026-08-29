@@ -138,7 +138,7 @@
             height: calc(100% + 80px);
             object-fit: cover;
             object-position: center;
-            filter: blur(28px) brightness(0.22) saturate(0.9);
+            filter: blur(5px) brightness(0.15) saturate(0.9);
             opacity: 0.9;
             pointer-events: none;
             z-index: 0;
@@ -146,6 +146,13 @@
 
         .demon-page-banner-background[hidden] {
             display: none !important;
+        }
+
+        body:not(.embed-mode) #global-footer {
+            position: relative;
+            z-index: 2;
+            background: var(--surface) !important;
+            isolation: isolate;
         }
 
         #global-nav,
@@ -520,7 +527,7 @@
     </style>
 </head>
 <body>
-    <video id="demon-page-banner-background" class="demon-page-banner-background" muted loop autoplay playsinline preload="auto" aria-hidden="true" hidden></video>
+    <img id="demon-page-banner-background" class="demon-page-banner-background" alt="" aria-hidden="true" hidden>
     <div id="global-nav"></div>
 
     <main class="page-content" id="main-content" style="display:none;">
@@ -677,6 +684,7 @@
         let activeModeratedRecord = null;
         let currentDemonId = null;
         let currentBannerUrl = '';
+        let currentBannerImageVersion = '';
 
         if (isEmbedMode) {
             document.documentElement.classList.add('embed-mode');
@@ -1379,28 +1387,21 @@
 
 
         function syncDemonPageBanner() {
-            const video = document.getElementById('demon-page-banner-background');
-            if (!video) return;
+            const image = document.getElementById('demon-page-banner-background');
+            if (!image) return;
 
             const bannerUrl = String(currentBannerUrl || '').trim();
-            if (!bannerUrl) {
-                video.pause();
-                video.removeAttribute('src');
-                delete video.dataset.bannerUrl;
-                video.load();
-                video.hidden = true;
+            if (!bannerUrl || !currentDemonId) {
+                image.removeAttribute('src');
+                image.hidden = true;
                 return;
             }
 
-            if (video.dataset.bannerUrl !== bannerUrl) {
-                video.dataset.bannerUrl = bannerUrl;
-                video.src = bannerUrl;
-                video.load();
-            }
-
-            video.hidden = false;
-            const playPromise = video.play();
-            if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(() => {});
+            image.hidden = true;
+            image.onload = () => { image.hidden = false; };
+            image.onerror = () => { image.hidden = true; };
+            const version = currentBannerImageVersion || bannerUrl;
+            image.src = `/api/demons/${encodeURIComponent(currentDemonId)}/banner-image?v=${encodeURIComponent(version)}`;
         }
 
         function syncBannerAdminButton() {
@@ -1478,6 +1479,7 @@
                 if (!response.ok) throw new Error(data.error || 'Could not update banner.');
 
                 currentBannerUrl = data.banner_url || '';
+                currentBannerImageVersion = String(data.banner_image_updated_at || '');
                 syncDemonPageBanner();
                 message.textContent = data.message || 'Banner updated.';
                 setTimeout(closeBannerSettings, 450);
@@ -1655,6 +1657,7 @@
             const data = await res.json();
             currentDemonId = Number(data.id) || Number(dbKey) || null;
             currentBannerUrl = String(data.banner_url || '');
+            currentBannerImageVersion = String(data.banner_image_updated_at || '');
             syncDemonPageBanner();
             document.getElementById('not-found-content').style.display = 'none';
             document.getElementById('main-content').style.display = 'block';
@@ -1827,9 +1830,7 @@
         });
 
         document.getElementById('demon-page-banner-background').addEventListener('error', event => {
-            const video = event.currentTarget;
-            delete video.dataset.bannerUrl;
-            video.hidden = true;
+            event.currentTarget.hidden = true;
         });
 
         document.addEventListener('keydown', event => {
