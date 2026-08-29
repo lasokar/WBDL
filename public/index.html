@@ -886,42 +886,49 @@
             });
         }
 
+        function warmBannerConnections(demons) {
+            const origins = [];
+            const seen = new Set();
+            (Array.isArray(demons) ? demons : []).forEach(demon => {
+                if (!demon?.banner_url) return;
+                try {
+                    const origin = new URL(String(demon.banner_url), window.location.href).origin;
+                    if (!origin || origin === window.location.origin || seen.has(origin)) return;
+                    seen.add(origin);
+                    origins.push(origin);
+                } catch (_) {}
+            });
+            origins.slice(0, 6).forEach(origin => {
+                if (!document.head.querySelector(`link[data-banner-preconnect="${CSS.escape(origin)}"]`)) {
+                    const preconnect = document.createElement('link');
+                    preconnect.rel = 'preconnect';
+                    preconnect.href = origin;
+                    preconnect.crossOrigin = 'anonymous';
+                    preconnect.dataset.bannerPreconnect = origin;
+                    document.head.appendChild(preconnect);
+                }
+            });
+        }
+
         function hydrateLevelBannerVideos(demons) {
             const bannerById = new Map((Array.isArray(demons) ? demons : [])
                 .filter(demon => demon && demon.id != null && demon.banner_url)
                 .map(demon => [String(demon.id), String(demon.banner_url)]));
 
             const videos = Array.from(document.querySelectorAll('.demon-card[data-demon-id] .demon-banner-video'));
-            const loadVideo = video => {
-                if (!video || video.dataset.loaded === '1') return;
-                const card = video.closest('.demon-card');
-                const src = card ? bannerById.get(String(card.dataset.demonId || '')) : '';
-                if (!src) return;
-                video.dataset.loaded = '1';
-                video.src = src;
-                video.load();
-            };
-
-            let observer = null;
-            if ('IntersectionObserver' in window) {
-                observer = new IntersectionObserver(entries => {
-                    entries.forEach(entry => {
-                        if (!entry.isIntersecting) return;
-                        loadVideo(entry.target);
-                        observer.unobserve(entry.target);
-                    });
-                }, { rootMargin: '320px 0px' });
-            }
 
             videos.forEach(video => {
                 const card = video.closest('.demon-card');
                 if (!card) return;
 
-                if (observer) observer.observe(video);
-                else loadVideo(video);
+                const src = bannerById.get(String(card.dataset.demonId || ''));
+                if (!src) return;
+
+                video.preload = 'auto';
+                video.src = src;
+                video.load();
 
                 const playBanner = () => {
-                    loadVideo(video);
                     const promise = video.play();
                     if (promise && typeof promise.catch === 'function') promise.catch(() => {});
                 };
@@ -1036,7 +1043,7 @@
                 const isCompleted = !isPlaceholder && completedDemonIds.has(Number(demon.id));
                 const cardHtml = `
                     <div class="demon-card ${isPlaceholder ? 'time-machine-placeholder' : ''} ${isCompleted ? 'completed-level' : ''}" data-demon-id="${isPlaceholder ? '' : demon.id}">
-                        ${!isPlaceholder && demon.banner_url ? '<video class="demon-banner-video" muted loop playsinline preload="metadata" aria-hidden="true"></video>' : ''}
+                        ${!isPlaceholder && demon.banner_url ? '<video class="demon-banner-video" muted loop playsinline preload="auto" aria-hidden="true"></video>' : ''}
                         <div class="thumbnail-box">
                             <img id="${imgId}" src="${thumbUrl}" alt="${demon.name} thumbnail">
                         </div>
@@ -1086,6 +1093,7 @@
                 ]);
                 allDemons = await response.json();
                 if (!response.ok || !Array.isArray(allDemons)) throw new Error('Could not load levels.');
+                warmBannerConnections(allDemons);
                 const completedIds = completedResponse.ok ? await completedResponse.json() : [];
                 completedDemonIds = new Set((Array.isArray(completedIds) ? completedIds : []).map(Number));
                 updateTimeMachineStatus();

@@ -520,7 +520,7 @@
     </style>
 </head>
 <body>
-    <video id="demon-page-banner-background" class="demon-page-banner-background" muted loop autoplay playsinline preload="metadata" aria-hidden="true" hidden></video>
+    <video id="demon-page-banner-background" class="demon-page-banner-background" muted loop autoplay playsinline preload="auto" aria-hidden="true" hidden></video>
     <div id="global-nav"></div>
 
     <main class="page-content" id="main-content" style="display:none;">
@@ -1830,10 +1830,6 @@
             const video = event.currentTarget;
             delete video.dataset.bannerUrl;
             video.hidden = true;
-        });
-
-        document.getElementById('banner-settings-overlay').addEventListener('click', event => {
-            if (event.target === event.currentTarget) closeBannerSettings();
         });
 
         document.addEventListener('keydown', event => {
