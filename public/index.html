@@ -102,6 +102,8 @@
         }
 
         .demon-card {
+            position: relative;
+            isolation: isolate;
             background: var(--surface);
             margin: 14px 0;
             border: 1px solid var(--border);
@@ -110,6 +112,31 @@
             border-radius: var(--radius);
             transition: border-color 0.15s, background 0.15s;
             overflow: hidden;
+        }
+
+        .demon-banner-video {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            filter: brightness(0.18) saturate(0.9);
+            opacity: 0.92;
+            pointer-events: none;
+            transition: filter 0.15s ease;
+        }
+
+        .demon-card:hover .demon-banner-video,
+        .demon-card:focus-within .demon-banner-video {
+            filter: brightness(0.34) saturate(0.9);
+        }
+
+        .demon-card > .thumbnail-box,
+        .demon-card > .card-body {
+            position: relative;
+            z-index: 1;
         }
 
 
@@ -859,6 +886,67 @@
             });
         }
 
+        function hydrateLevelBannerVideos(demons) {
+            const bannerById = new Map((Array.isArray(demons) ? demons : [])
+                .filter(demon => demon && demon.id != null && demon.banner_url)
+                .map(demon => [String(demon.id), String(demon.banner_url)]));
+
+            const videos = Array.from(document.querySelectorAll('.demon-card[data-demon-id] .demon-banner-video'));
+            const loadVideo = video => {
+                if (!video || video.dataset.loaded === '1') return;
+                const card = video.closest('.demon-card');
+                const src = card ? bannerById.get(String(card.dataset.demonId || '')) : '';
+                if (!src) return;
+                video.dataset.loaded = '1';
+                video.src = src;
+                video.load();
+            };
+
+            let observer = null;
+            if ('IntersectionObserver' in window) {
+                observer = new IntersectionObserver(entries => {
+                    entries.forEach(entry => {
+                        if (!entry.isIntersecting) return;
+                        loadVideo(entry.target);
+                        observer.unobserve(entry.target);
+                    });
+                }, { rootMargin: '320px 0px' });
+            }
+
+            videos.forEach(video => {
+                const card = video.closest('.demon-card');
+                if (!card) return;
+
+                if (observer) observer.observe(video);
+                else loadVideo(video);
+
+                const playBanner = () => {
+                    loadVideo(video);
+                    const promise = video.play();
+                    if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+                };
+                const resetBanner = () => {
+                    video.pause();
+                    const seekToStart = () => {
+                        try {
+                            video.currentTime = 0;
+                        } catch (_) {}
+                    };
+
+                    if (video.readyState >= 1) seekToStart();
+                    else video.addEventListener('loadedmetadata', seekToStart, { once: true });
+                };
+
+                card.addEventListener('mouseenter', playBanner);
+                card.addEventListener('mouseleave', resetBanner);
+                card.addEventListener('focusin', playBanner);
+                card.addEventListener('focusout', resetBanner);
+                video.addEventListener('error', () => {
+                    video.style.display = 'none';
+                }, { once: true });
+            });
+        }
+
         function switchListTab(tab) {
             currentListTab = tab;
             document.getElementById('tab-main').classList.toggle('active', tab === 'main');
@@ -947,7 +1035,8 @@
 
                 const isCompleted = !isPlaceholder && completedDemonIds.has(Number(demon.id));
                 const cardHtml = `
-                    <div class="demon-card ${isPlaceholder ? 'time-machine-placeholder' : ''} ${isCompleted ? 'completed-level' : ''}">
+                    <div class="demon-card ${isPlaceholder ? 'time-machine-placeholder' : ''} ${isCompleted ? 'completed-level' : ''}" data-demon-id="${isPlaceholder ? '' : demon.id}">
+                        ${!isPlaceholder && demon.banner_url ? '<video class="demon-banner-video" muted loop playsinline preload="metadata" aria-hidden="true"></video>' : ''}
                         <div class="thumbnail-box">
                             <img id="${imgId}" src="${thumbUrl}" alt="${demon.name} thumbnail">
                         </div>
@@ -980,6 +1069,7 @@
 
             container.innerHTML = htmlContent;
             fitLevelCardText();
+            hydrateLevelBannerVideos(filteredDemons);
 
             nonYtVideoQueue.forEach(item => {
                 extract100thFrame(item.url, item.id);

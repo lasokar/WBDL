@@ -95,6 +95,72 @@
             font-weight: 800;
         }
 
+
+        .level-banner-settings-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 52px;
+            height: 52px;
+            margin-top: 7px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            cursor: pointer;
+            opacity: 0.78;
+            transition: opacity 0.15s, transform 0.15s;
+        }
+
+        .level-banner-settings-button[hidden] {
+            display: none !important;
+        }
+
+        .level-banner-settings-button:hover {
+            opacity: 1;
+            transform: scale(1.06);
+        }
+
+        .level-banner-settings-button img {
+            width: 48px;
+            height: 48px;
+            display: block;
+            object-fit: contain;
+            pointer-events: none;
+        }
+
+        .demon-page-banner-background {
+            position: fixed;
+            top: -40px;
+            right: -40px;
+            bottom: -40px;
+            left: -40px;
+            width: calc(100% + 80px);
+            height: calc(100% + 80px);
+            object-fit: cover;
+            object-position: center;
+            filter: blur(28px) brightness(0.22) saturate(0.9);
+            opacity: 0.9;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .demon-page-banner-background[hidden] {
+            display: none !important;
+        }
+
+        #global-nav,
+        .page-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .banner-settings-message {
+            min-height: 1.2em;
+            margin: 4px 0 0;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+        }
+
         @media (max-width: 640px) {
             .info-header {
                 padding-right: 0;
@@ -454,6 +520,7 @@
     </style>
 </head>
 <body>
+    <video id="demon-page-banner-background" class="demon-page-banner-background" muted loop autoplay playsinline preload="metadata" aria-hidden="true" hidden></video>
     <div id="global-nav"></div>
 
     <main class="page-content" id="main-content" style="display:none;">
@@ -465,6 +532,9 @@
                 <div id="level-upload-date-text"></div>
                 <div id="level-average-enjoyment-text"></div>
                 <div id="level-community-placement-text"></div>
+                <button type="button" id="level-banner-settings-button" class="level-banner-settings-button" onclick="openBannerSettings()" title="Banner settings" aria-label="Banner settings" hidden>
+                    <img src="/assets/settings-uhd.png" alt="">
+                </button>
             </div>
             <h1 id="demon-name">Level Name</h1>
             <div style="margin-top: 10px; display: flex; align-items: center; gap: 15px;">
@@ -511,6 +581,23 @@
         </div>
     </main>
 
+
+    <div class="record-moderation-overlay" id="banner-settings-overlay" aria-hidden="true">
+        <div class="record-moderation-modal" role="dialog" aria-modal="true" aria-labelledby="banner-settings-title">
+            <button type="button" class="record-moderation-close" onclick="closeBannerSettings()" aria-label="Close">&times;</button>
+            <h3 id="banner-settings-title">Level Banner</h3>
+            <p class="record-moderation-summary">This shows up as the background in the level card. Leave it blank to remove the banner.</p>
+            <label class="record-moderation-field">
+                <span>Video URL</span>
+                <input id="banner-video-url" type="url" maxlength="2000" placeholder="https://example.com/banner.mp4" autocomplete="off">
+            </label>
+            <div id="banner-settings-message" class="banner-settings-message" aria-live="polite"></div>
+            <div class="record-moderation-actions">
+                <button type="button" onclick="closeBannerSettings()">Cancel</button>
+                <button type="button" class="save-record-button" id="save-banner-button" onclick="saveBannerSettings()">Save</button>
+            </div>
+        </div>
+    </div>
 
     <div class="record-moderation-overlay" id="record-moderation-overlay" aria-hidden="true">
         <div class="record-moderation-modal" role="dialog" aria-modal="true" aria-labelledby="record-moderation-title">
@@ -588,6 +675,8 @@
         let recordModerationPermissionsLoaded = false;
         let recordModerationCache = new Map();
         let activeModeratedRecord = null;
+        let currentDemonId = null;
+        let currentBannerUrl = '';
 
         if (isEmbedMode) {
             document.documentElement.classList.add('embed-mode');
@@ -1289,8 +1378,53 @@
         }
 
 
+        function syncDemonPageBanner() {
+            const video = document.getElementById('demon-page-banner-background');
+            if (!video) return;
+
+            const bannerUrl = String(currentBannerUrl || '').trim();
+            if (!bannerUrl) {
+                video.pause();
+                video.removeAttribute('src');
+                delete video.dataset.bannerUrl;
+                video.load();
+                video.hidden = true;
+                return;
+            }
+
+            if (video.dataset.bannerUrl !== bannerUrl) {
+                video.dataset.bannerUrl = bannerUrl;
+                video.src = bannerUrl;
+                video.load();
+            }
+
+            video.hidden = false;
+            const playPromise = video.play();
+            if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(() => {});
+        }
+
+        function syncBannerAdminButton() {
+            const button = document.getElementById('level-banner-settings-button');
+            const meta = document.getElementById('level-meta-corner');
+            if (!button || !meta) return;
+
+            const canEditBanner = Boolean(
+                currentDemonId &&
+                !embedParams.get('date') &&
+                ['admin', 'owner'].includes(recordModerationViewerRole)
+            );
+            button.hidden = !canEditBanner;
+
+            const hasMetaText = ['level-update-text', 'level-upload-date-text', 'level-average-enjoyment-text', 'level-community-placement-text']
+                .some(id => Boolean(document.getElementById(id)?.textContent?.trim()));
+            meta.style.display = hasMetaText || canEditBanner ? 'block' : 'none';
+        }
+
         async function loadRecordModerationPermissions() {
-            if (recordModerationPermissionsLoaded) return;
+            if (recordModerationPermissionsLoaded) {
+                syncBannerAdminButton();
+                return;
+            }
             recordModerationPermissionsLoaded = true;
 
             try {
@@ -1301,6 +1435,56 @@
             } catch (_) {
                 canManageRecords = false;
                 recordModerationViewerRole = '';
+            }
+
+            syncBannerAdminButton();
+        }
+
+        function openBannerSettings() {
+            if (!['admin', 'owner'].includes(recordModerationViewerRole) || !currentDemonId) return;
+            const overlay = document.getElementById('banner-settings-overlay');
+            const input = document.getElementById('banner-video-url');
+            const message = document.getElementById('banner-settings-message');
+            input.value = currentBannerUrl || '';
+            message.textContent = '';
+            overlay.classList.add('visible');
+            overlay.setAttribute('aria-hidden', 'false');
+            setTimeout(() => input.focus(), 0);
+        }
+
+        function closeBannerSettings() {
+            const overlay = document.getElementById('banner-settings-overlay');
+            overlay.classList.remove('visible');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+
+        async function saveBannerSettings() {
+            if (!currentDemonId) return;
+            const input = document.getElementById('banner-video-url');
+            const message = document.getElementById('banner-settings-message');
+            const saveButton = document.getElementById('save-banner-button');
+            const bannerUrl = input.value.trim();
+
+            saveButton.disabled = true;
+            message.textContent = 'Saving...';
+
+            try {
+                const response = await fetch(`/api/admin/demons/${currentDemonId}/banner`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bannerUrl })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Could not update banner.');
+
+                currentBannerUrl = data.banner_url || '';
+                syncDemonPageBanner();
+                message.textContent = data.message || 'Banner updated.';
+                setTimeout(closeBannerSettings, 450);
+            } catch (err) {
+                message.textContent = err.message || 'Could not update banner.';
+            } finally {
+                saveButton.disabled = false;
             }
         }
 
@@ -1469,6 +1653,9 @@
             }
 
             const data = await res.json();
+            currentDemonId = Number(data.id) || Number(dbKey) || null;
+            currentBannerUrl = String(data.banner_url || '');
+            syncDemonPageBanner();
             document.getElementById('not-found-content').style.display = 'none';
             document.getElementById('main-content').style.display = 'block';
 
@@ -1478,6 +1665,7 @@
             document.getElementById('demon-author').innerText = data.author;
             document.getElementById('level-id-tag').innerText = `ID: ${data.level_id}`;
             renderLevelMeta(data);
+            syncBannerAdminButton();
 
             document.getElementById('play-link').href = `https://web-dashers.github.io/?id=${data.level_id}`;
 
@@ -1638,8 +1826,21 @@
             if (event.target === event.currentTarget) closeRecordModeration();
         });
 
+        document.getElementById('demon-page-banner-background').addEventListener('error', event => {
+            const video = event.currentTarget;
+            delete video.dataset.bannerUrl;
+            video.hidden = true;
+        });
+
+        document.getElementById('banner-settings-overlay').addEventListener('click', event => {
+            if (event.target === event.currentTarget) closeBannerSettings();
+        });
+
         document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') closeRecordModeration();
+            if (event.key === 'Escape') {
+                closeRecordModeration();
+                closeBannerSettings();
+            }
         });
 
         loadDemon();

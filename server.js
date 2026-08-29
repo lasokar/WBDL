@@ -3065,6 +3065,54 @@ app.post('/api/admin/delete-demon', isOwner, async (req, res) => {
     }
 });
 
+app.patch('/api/admin/demons/:id/banner', isAdmin, async (req, res) => {
+    const demonId = parseInt(req.params.id, 10);
+    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const rawBannerUrl = String(req.body?.bannerUrl ?? '').trim();
+
+    if (!Number.isInteger(demonId)) {
+        return res.status(400).json({ error: 'Invalid level.' });
+    }
+
+    let bannerUrl = null;
+    if (rawBannerUrl) {
+        if (rawBannerUrl.length > 2000) {
+            return res.status(400).json({ error: 'Banner video URL is too long.' });
+        }
+
+        try {
+            const parsed = new URL(rawBannerUrl);
+            if (!['http:', 'https:'].includes(parsed.protocol)) {
+                return res.status(400).json({ error: 'Banner video URL must use http or https.' });
+            }
+            bannerUrl = parsed.toString();
+        } catch (_) {
+            return res.status(400).json({ error: 'Enter a valid banner video URL.' });
+        }
+    }
+
+    try {
+        const result = await pool.query(`
+            UPDATE demons
+            SET banner_url = $1
+            WHERE id = $2 AND list_type = $3
+            RETURNING banner_url
+        `, [bannerUrl, demonId, list]);
+
+        if (!result.rows.length) {
+            return res.status(404).json({ error: 'Level not found.' });
+        }
+
+        return res.json({
+            message: bannerUrl ? 'Banner updated.' : 'Banner removed.',
+            banner_url: result.rows[0].banner_url || null,
+        });
+    } catch (err) {
+        console.error('Banner update error:', err);
+        return res.status(500).json({ error: 'Could not update banner.' });
+    }
+});
+
 app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
     const { id, oldPosition, newPosition } = req.body;
     const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
