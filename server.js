@@ -212,7 +212,6 @@ async function extractBannerJpeg(inputPath, previewTimeSeconds = 0) {
 async function captureBannerPreview(rawUrl, previewTimeSeconds = 0) {
     const inputPath = await downloadBannerVideoToTemp(rawUrl);
     try {
-        // Banners are video-only. Reject PNGs even when a CDN hides the extension.
         const handle = await fs.promises.open(inputPath, 'r');
         try {
             const signature = Buffer.alloc(8);
@@ -673,7 +672,10 @@ function getEmailIdentity(value) {
     const domain = match[2];
     if (!ALLOWED_EMAIL_DOMAINS.has(domain)) return null;
 
-    const baseLocalPart = localPart.split('+', 1)[0].replace(/\./g, '');
+    if (localPart.includes('+')) return null;
+    if ((localPart.match(/\./g) || []).length > 1) return null;
+
+    const baseLocalPart = localPart.replace(/\./g, '');
     if (!baseLocalPart) return null;
 
     return `${baseLocalPart}@${domain}`;
@@ -711,6 +713,7 @@ function normalizeVideoSubmission(value) {
     try {
         const parsed = new URL(raw);
         if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+        if (parsed.username || parsed.password) return null;
 
         const youtubeId = extractYoutubeVideoId(parsed);
         if (youtubeId && /^[A-Za-z0-9_-]{6,}$/.test(youtubeId)) {
@@ -718,15 +721,59 @@ function normalizeVideoSubmission(value) {
             return { cleanUrl, key: `youtube:${youtubeId}` };
         }
 
-        let hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
-        let pathname = normalizePercentEncoding(parsed.pathname || '/').replace(/\/{2,}/g, '/');
-        if (pathname.length > 1) pathname = pathname.replace(/\/+$/, '');
-        const port = parsed.port ? `:${parsed.port}` : '';
+        const hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+        const parts = parsed.pathname.split('/').filter(Boolean);
 
-        return {
-            cleanUrl: raw,
-            key: `url:${hostname}${port}${pathname}`,
-        };
+        if (hostname === 'twitch.tv') {
+            if (parts[0] === 'videos' && /^\d+$/.test(parts[1] || '') && parts.length === 2) {
+                const id = parts[1];
+                return {
+                    cleanUrl: `https://www.twitch.tv/videos/${id}`,
+                    key: `twitch:video:${id}`,
+                };
+            }
+            if (parts.length === 3 && parts[1] === 'clip' && /^[A-Za-z0-9_-]+$/.test(parts[2])) {
+                const channel = parts[0].toLowerCase();
+                const slug = parts[2];
+                return {
+                    cleanUrl: `https://www.twitch.tv/${channel}/clip/${slug}`,
+                    key: `twitch:clip:${slug}`,
+                };
+            }
+            return null;
+        }
+        if (hostname === 'clips.twitch.tv' && parts.length === 1 && /^[A-Za-z0-9_-]+$/.test(parts[0])) {
+            const slug = parts[0];
+            return {
+                cleanUrl: `https://clips.twitch.tv/${slug}`,
+                key: `twitch:clip:${slug}`,
+            };
+        }
+
+        if (hostname === 'medal.tv') {
+            const clipIndex = parts.findIndex(part => part === 'clip' || part === 'clips');
+            if (clipIndex >= 0 && parts[clipIndex + 1]) {
+                const pathname = '/' + parts.map(encodeURIComponent).join('/');
+                const clipId = parts[clipIndex + 1];
+                return {
+                    cleanUrl: `https://medal.tv${pathname}`,
+                    key: `medal:${clipId}`,
+                };
+            }
+            return null;
+        }
+
+        if (hostname === 'files.catbox.moe') {
+            const pathname = normalizePercentEncoding(parsed.pathname || '/').replace(/\/{2,}/g, '/');
+            if (!/\.(?:mp4|mov|webm)$/i.test(pathname)) return null;
+            if (pathname === '/' || pathname.endsWith('/')) return null;
+            return {
+                cleanUrl: `https://files.catbox.moe${pathname}`,
+                key: `catbox:${pathname.toLowerCase()}`,
+            };
+        }
+
+        return null;
     } catch (_) {
         return null;
     }
@@ -776,6 +823,42 @@ async function getSubmissionRestriction(db, userId) {
     if (user.account_disabled) return 'This account is disabled.';
     if (user.leaderboard_banned) return 'Leaderboard-banned users cannot submit records.';
     return null;
+}
+
+async function getNewAccountSubmissionRateLimit(db, userId) {
+    await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`submission-rate-limit:${userId}`]);
+
+    const result = await db.query(`
+        SELECT
+            u.created_at,
+            CASE
+                WHEN u.created_at > NOW() - INTERVAL '24 hours' THEN 2
+                WHEN u.created_at > NOW() - INTERVAL '7 days' THEN 5
+                ELSE NULL
+            END AS hourly_limit,
+            (
+                (SELECT COUNT(*)::INTEGER
+                 FROM records r
+                 WHERE r.user_id = u.id
+                   AND r.created_at >= NOW() - INTERVAL '1 hour')
+                +
+                (SELECT COUNT(*)::INTEGER
+                 FROM verifications v
+                 WHERE v.user_id = u.id
+                   AND v.created_at >= NOW() - INTERVAL '1 hour')
+            ) AS recent_submissions
+        FROM users u
+        WHERE u.id = $1
+    `, [userId]);
+
+    const row = result.rows[0];
+    if (!row || row.hourly_limit === null) return null;
+
+    const limit = Number(row.hourly_limit);
+    const recent = Number(row.recent_submissions || 0);
+    return recent >= limit
+        ? 'You have sent too many submissions, please try again later.'
+        : null;
 }
 
 function normalizeEnjoymentRating(value, percentage) {
@@ -848,9 +931,17 @@ async function createInboxNotification(db, {
 }) {
     if (!userId || !subject || !body) return null;
     return db.query(`
+        WITH recipient AS (
+            SELECT id
+            FROM users
+            WHERE id = $1
+              AND COALESCE(account_disabled, FALSE) = FALSE
+            FOR SHARE
+        )
         INSERT INTO notifications
             (user_id, actor_id, record_id, type, reason, list_type, subject, body, sender_name, is_read)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE)
+        SELECT recipient.id, $2, $3, $4, $5, $6, $7, $8, $9, FALSE
+        FROM recipient
         RETURNING id
     `, [userId, actorId, recordId, type, reason, listType, subject, body, senderName]);
 }
@@ -934,6 +1025,7 @@ async function notifySubmissionSubscribers({
             FROM users recipient
             WHERE LOWER(COALESCE(recipient.role, '')) IN ('moderator', 'admin', 'owner')
               AND COALESCE(recipient.submission_notifications, FALSE) = TRUE
+              AND COALESCE(recipient.account_disabled, FALSE) = FALSE
               AND recipient.id <> $7::integer
         `, [submitterId, recordId, listType, subject, body, details.submitter_name, submitterId]);
 
@@ -942,6 +1034,7 @@ async function notifySubmissionSubscribers({
             FROM users
             WHERE LOWER(COALESCE(role, '')) IN ('moderator', 'admin', 'owner')
               AND COALESCE(submission_discord_ping, FALSE) = TRUE
+              AND COALESCE(account_disabled, FALSE) = FALSE
               AND discord_id IS NOT NULL
               AND id <> $1::integer
         `, [submitterId]);
@@ -1006,6 +1099,7 @@ async function notifyVerificationSubscribers({
             FROM users recipient
             WHERE LOWER(COALESCE(recipient.role, '')) IN ('admin', 'owner')
               AND COALESCE(recipient.verification_notifications, FALSE) = TRUE
+              AND COALESCE(recipient.account_disabled, FALSE) = FALSE
               AND COALESCE(recipient.verification_notification_max_position, 150) >= $6::integer
               AND recipient.id <> $1::integer
         `, [submitterId, listType, subject, body, submitterName, position]);
@@ -1015,6 +1109,7 @@ async function notifyVerificationSubscribers({
             FROM users
             WHERE LOWER(COALESCE(role, '')) IN ('admin', 'owner')
               AND COALESCE(verification_discord_ping, FALSE) = TRUE
+              AND COALESCE(account_disabled, FALSE) = FALSE
               AND COALESCE(verification_notification_max_position, 150) >= $2::integer
               AND discord_id IS NOT NULL
               AND id <> $1::integer
@@ -1990,7 +2085,7 @@ app.post('/api/submit', async (req, res) => {
 
     const normalizedVideo = normalizeVideoSubmission(videoUrl);
     if (!normalizedVideo) {
-        return res.status(400).json({ error: "Please enter a valid URL." });
+        return res.status(400).json({ error: "Video link is not from an allowed domain." });
     }
 
     const client = await pool.connect();
@@ -2003,6 +2098,12 @@ app.post('/api/submit', async (req, res) => {
         if (restriction) {
             await client.query('ROLLBACK');
             return res.status(403).json({ error: restriction });
+        }
+
+        const rateLimitError = await getNewAccountSubmissionRateLimit(client, req.session.userId);
+        if (rateLimitError) {
+            await client.query('ROLLBACK');
+            return res.status(429).json({ error: rateLimitError });
         }
 
         const demonQuery = await client.query(
@@ -2184,7 +2285,7 @@ app.patch('/api/records/pending/:recordId', async (req, res) => {
         return res.status(400).json({ error: "Main-list percentages must be whole numbers." });
     }
     if (!normalizedVideo) {
-        return res.status(400).json({ error: "Please enter a valid video URL." });
+        return res.status(400).json({ error: "Video link is not from an allowed domain." });
     }
     if (req.body.enjoymentRating !== '' && req.body.enjoymentRating !== null && req.body.enjoymentRating !== undefined && enjoymentRating === null) {
         return res.status(400).json({ error: "Enjoyment rating must be between 1 and 10 and can only be used for 100% records." });
@@ -2532,6 +2633,7 @@ app.post('/api/admin/users/:userId/disable', isAdmin, async (req, res) => {
             await client.query(`
                 DELETE FROM notifications
                 WHERE user_id = $1
+                   OR actor_id = $1
                    OR record_id IN (
                         SELECT id
                         FROM records
@@ -2578,6 +2680,116 @@ app.post('/api/admin/users/:userId/disable', isAdmin, async (req, res) => {
     }
 });
 
+function makeResetAccountUsername() {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    const bytes = randomBytes(10);
+    let suffix = '';
+    for (let i = 0; i < 10; i++) suffix += alphabet[bytes[i] % alphabet.length];
+    return `acc_${suffix}`;
+}
+
+app.post('/api/owner/users/:userId/reset', isOwner, async (req, res) => {
+    const targetUserId = Number.parseInt(req.params.userId, 10);
+    if (!Number.isInteger(targetUserId)) return res.status(400).json({ error: 'Invalid user.' });
+    if (Number(req.session.userId) === targetUserId) {
+        return res.status(400).json({ error: 'You cannot reset your own account.' });
+    }
+
+    const client = await pool.connect();
+    let newUsername = null;
+    try {
+        await client.query('BEGIN');
+        const targetResult = await client.query(`
+            SELECT id, username, role, COALESCE(account_disabled, FALSE) AS account_disabled
+            FROM users
+            WHERE id = $1
+            FOR UPDATE
+        `, [targetUserId]);
+        const target = targetResult.rows[0];
+        if (!target) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'User not found.' });
+        }
+        if (isStaffRole(target.role)) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: 'Staff accounts cannot be reset.' });
+        }
+        if (!target.account_disabled) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'The account must be disabled before it can be reset.' });
+        }
+
+        for (let attempt = 0; attempt < 20; attempt++) {
+            const candidate = makeResetAccountUsername();
+            const duplicate = await client.query(`
+                SELECT 1 FROM users WHERE LOWER(username) = LOWER($1)
+                UNION ALL
+                SELECT 1 FROM pending_users WHERE LOWER(username) = LOWER($1)
+                LIMIT 1
+            `, [candidate]);
+            if (!duplicate.rows.length) {
+                newUsername = candidate;
+                break;
+            }
+        }
+        if (!newUsername) throw new Error('Could not generate a unique reset username.');
+
+        await client.query(`
+            DELETE FROM notifications
+            WHERE user_id = $1 OR actor_id = $1
+        `, [targetUserId]);
+
+        await client.query('DELETE FROM records WHERE user_id = $1', [targetUserId]);
+
+        await client.query(`
+            UPDATE users
+            SET username = $1,
+                display_name = '',
+                bio = '',
+                pronouns = '',
+                country = '',
+                social_youtube = '',
+                social_twitter = '',
+                social_twitch = '',
+                social_discord = '',
+                social_reddit = '',
+                social_gdbrowser = '',
+                discord_id = NULL,
+                discord_username = NULL,
+                icon_type = 'cube',
+                icon_id = 1,
+                color1 = 1,
+                color2 = 3,
+                glow = -1,
+                badges = '[]'::jsonb,
+                submission_notifications = FALSE,
+                submission_discord_ping = FALSE,
+                verification_notifications = FALSE,
+                verification_discord_ping = FALSE
+            WHERE id = $2
+        `, [newUsername, targetUserId]);
+
+        await client.query('COMMIT');
+
+        for (const list of ['primary', 'impossible']) {
+            const sync = await syncLeaderboardTopOne(list);
+            for (const changedUserId of sync.changedUserIds || []) {
+                if (changedUserId) await evaluateUserBadges(changedUserId, list);
+            }
+        }
+
+        return res.json({
+            message: `Account reset. New username: ${newUsername}`,
+            username: newUsername,
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Account reset error:', err);
+        return res.status(500).json({ error: 'Could not reset the account.' });
+    } finally {
+        client.release();
+    }
+});
 
 app.post('/api/owner/users/:userId/role', isOwner, async (req, res) => {
     const targetUserId = parseInt(req.params.userId, 10);
@@ -2718,18 +2930,19 @@ app.patch('/api/admin/users/:userId/records/:recordId', isAdmin, async (req, res
         ? Math.round(Number.parseFloat(req.body.percentage) * 100) / 100
         : Number.parseInt(req.body.percentage, 10);
     const videoUrl = String(req.body.videoUrl || '').trim();
+    const normalizedVideo = normalizeVideoSubmission(videoUrl);
     const status = String(req.body.status || '').toLowerCase();
     const reason = cleanProfileText(req.body.reason, 1000);
     const enjoymentRating = normalizeEnjoymentRating(req.body.enjoymentRating, percentage);
 
     if (list === 'impossible' && hasMoreThanTwoDecimalPlaces(req.body.percentage)) {
-        return res.status(400).json({ error: "WBiLL percentages are limited to 2 decimal places." });
+        return res.status(400).json({ error: "Percentages are limited to 2 decimal places." });
     }
 
     if (!Number.isInteger(targetUserId) || !Number.isInteger(recordId)) return res.status(400).json({ error: "Invalid record." });
     if (!Number.isFinite(percentage) || percentage < 1 || percentage > 100) return res.status(400).json({ error: "Percentage must be between 1 and 100." });
     if (list !== 'impossible' && !Number.isInteger(percentage)) return res.status(400).json({ error: "Main-list percentages must be whole numbers." });
-    if (!isValidHttpUrl(videoUrl)) return res.status(400).json({ error: "Please enter a valid video URL." });
+    if (!normalizedVideo) return res.status(400).json({ error: "Video link is not from an allowed domain." });
     if (!['pending', 'accepted', 'rejected'].includes(status)) return res.status(400).json({ error: "Invalid status." });
     if (req.body.enjoymentRating !== '' && req.body.enjoymentRating !== null && req.body.enjoymentRating !== undefined && enjoymentRating === null) {
         return res.status(400).json({ error: "Enjoyment rating must be 1-10 and only applies to 100% records." });
@@ -2763,7 +2976,7 @@ app.patch('/api/admin/users/:userId/records/:recordId', isAdmin, async (req, res
                 status = $4,
                 accepted_position = CASE WHEN $4 = 'accepted' THEN $5 ELSE accepted_position END
             WHERE id = $6
-        `, [percentage, videoUrl, enjoymentRating, status, record.position, recordId]);
+        `, [percentage, normalizedVideo.cleanUrl, enjoymentRating, status, record.position, recordId]);
 
         if (record.old_status === 'pending' && ['accepted', 'rejected'].includes(status)) {
             await logModerationAction(pool, {
@@ -3590,6 +3803,7 @@ app.patch('/api/verifications/pending/:verifId', async (req, res) => {
     const opinion = Number.parseInt(req.body.opinion, 10);
     const normalizedVideo = normalizeVideoSubmission(req.body.videoUrl);
     const rawFootageUrl = String(req.body.rawFootageUrl || '').trim();
+    const normalizedRawFootage = rawFootageUrl ? normalizeVideoSubmission(rawFootageUrl) : null;
     const enjoymentRating = list === 'impossible' ? null : normalizeEnjoymentRating(req.body.enjoymentRating, 100);
     const comments = cleanProfileText(req.body.comments, 1000);
     if (String(req.body.comments ?? '').trim().length > 1000) {
@@ -3599,8 +3813,8 @@ app.patch('/api/verifications/pending/:verifId', async (req, res) => {
     if (!Number.isInteger(verifId)) return res.status(400).json({ error: 'Invalid verification.' });
     if (!name || !author || !levelId) return res.status(400).json({ error: 'Level name, creator, and ID are required.' });
     if (!Number.isInteger(opinion) || opinion < 1 || opinion > 150) return res.status(400).json({ error: 'Placement must be between 1 and 150.' });
-    if (!normalizedVideo) return res.status(400).json({ error: 'Please enter a valid verification video URL.' });
-    if (rawFootageUrl && !isValidHttpUrl(rawFootageUrl)) return res.status(400).json({ error: 'Please enter a valid raw-footage URL.' });
+    if (!normalizedVideo) return res.status(400).json({ error: 'Verification video link is not from an allowed domain.' });
+    if (rawFootageUrl && !normalizedRawFootage) return res.status(400).json({ error: 'Raw footage link is not from an allowed domain.' });
     if (list !== 'impossible' && req.body.enjoymentRating !== '' && req.body.enjoymentRating != null && enjoymentRating === null) {
         return res.status(400).json({ error: 'Enjoyment rating must be between 1 and 10.' });
     }
@@ -3643,7 +3857,7 @@ app.patch('/api/verifications/pending/:verifId', async (req, res) => {
                 enjoyment_rating = $7,
                 submission_comments = $8
             WHERE id = $9
-        `, [name, author, levelId, normalizedVideo.cleanUrl, rawFootageUrl || null, opinion, enjoymentRating, comments || null, verifId]);
+        `, [name, author, levelId, normalizedVideo.cleanUrl, normalizedRawFootage?.cleanUrl || null, opinion, enjoymentRating, comments || null, verifId]);
         await client.query('COMMIT');
         return res.json({ message: 'Pending verification updated.' });
     } catch (err) {
@@ -5104,6 +5318,7 @@ function fixVideoUrl(url) {
 app.post('/api/submit-verification', async (req, res) => {
     const { name, author, levelId, opinion, videoUrl, enjoymentRating } = req.body;
     const rawFootageUrl = String(req.body.rawFootageUrl || '').trim();
+    const normalizedRawFootage = rawFootageUrl ? normalizeVideoSubmission(rawFootageUrl) : null;
     const comments = cleanProfileText(req.body.comments, 1000);
     if (String(req.body.comments ?? '').trim().length > 1000) {
         return res.status(400).json({ error: "Comments are limited to 1000 characters." });
@@ -5123,10 +5338,10 @@ app.post('/api/submit-verification', async (req, res) => {
         : normalizeEnjoymentRating(enjoymentRating, 100);
     const normalizedVideo = normalizeVideoSubmission(videoUrl);
     if (!normalizedVideo) {
-        return res.status(400).json({ error: "Please enter a valid verification video URL." });
+        return res.status(400).json({ error: "Video link is not from an allowed domain." });
     }
-    if (rawFootageUrl && !isValidHttpUrl(rawFootageUrl)) {
-        return res.status(400).json({ error: "Please enter a valid raw-footage URL." });
+    if (rawFootageUrl && !normalizedRawFootage) {
+        return res.status(400).json({ error: "Raw footage link is not from an allowed domain." });
     }
     if (!Number.isInteger(placementOpinion) || placementOpinion < 1 || placementOpinion > 150) {
         return res.status(400).json({ error: "You can't submit for the legacy list." });
@@ -5148,6 +5363,12 @@ app.post('/api/submit-verification', async (req, res) => {
             return res.status(403).json({ error: restriction });
         }
 
+        const rateLimitError = await getNewAccountSubmissionRateLimit(client, userId);
+        if (rateLimitError) {
+            await client.query('ROLLBACK');
+            return res.status(429).json({ error: rateLimitError });
+        }
+
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedVideo.key]);
         const reuse = await findActiveVideoReuse(client, normalizedVideo.key);
         if (reuse) {
@@ -5160,7 +5381,7 @@ app.post('/api/submit-verification', async (req, res) => {
                 (user_id, level_name, level_author, level_id, video_url, raw_footage_url, placement_opinion, list_type, enjoyment_rating, submission_comments)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              RETURNING id`,
-            [userId, name, author, levelId, normalizedVideo.cleanUrl, rawFootageUrl || null, placementOpinion, list, normalizedEnjoyment, comments || null]
+            [userId, name, author, levelId, normalizedVideo.cleanUrl, normalizedRawFootage?.cleanUrl || null, placementOpinion, list, normalizedEnjoyment, comments || null]
         );
         const verificationId = Number(insertedVerification.rows[0]?.id);
         await client.query('COMMIT');

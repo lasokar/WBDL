@@ -2096,6 +2096,9 @@
                             ${protectedTarget
                                 ? ''
                                 : `<br><div class="staff-action-row"><button type="button" class="${target.account_disabled ? '' : 'danger'}" onclick="beginModerationAction('account-disabled', ${target.account_disabled ? 'false' : 'true'}, '${target.account_disabled ? 'Re-enable account' : 'Disable account'}')">${target.account_disabled ? 'Re-enable account' : 'Disable account'}</button></div>`}
+                            ${isOwnerViewer && target.account_disabled && !protectedTarget
+                                ? `<br><div class="staff-action-row"><button type="button" class="danger" onclick="beginModerationAction('reset-account', true, 'Reset account')">Reset account</button></div>`
+                                : ''}
                         ` : ''}
                     </div>
                     ${isAdminViewer ? `
@@ -2131,6 +2134,14 @@
         }
 
         function beginModerationAction(type, value, label) {
+            if (type === 'reset-account') {
+                const confirmed = window.confirm('Reset this account? This permanently removes all of its data.');
+                if (!confirmed) return;
+                pendingModerationAction = { type, value };
+                confirmModerationAction();
+                return;
+            }
+
             pendingModerationAction = { type, value };
             const section = document.getElementById('staff-reason-section');
             const reason = document.getElementById('staff-global-reason');
@@ -2182,6 +2193,8 @@
                     await saveModeratedUsername();
                 } else if (action.type === 'role') {
                     await changeUserRole(String(action.value || ''));
+                } else if (action.type === 'reset-account') {
+                    await resetAccount();
                 }
             } catch (err) {
                 alert(err.message);
@@ -2207,6 +2220,17 @@
             });
             await openModerationPanel();
             await loadProfile();
+        }
+
+        async function resetAccount() {
+            const data = await runModerationRequest(`/api/owner/users/${currentProfileData.userId}/reset`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            if (data.username) {
+                window.location.href = `/profile?user=${encodeURIComponent(data.username)}`;
+            }
         }
 
         async function saveModeratedUsername() {
