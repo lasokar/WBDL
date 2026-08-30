@@ -68,7 +68,12 @@
             padding: 0 190px 24px 0;
             min-height: 82px;
         }
-        .info-header h1 { color: var(--accent); margin: 0; font-size: 2.2em; }
+        .info-header h1 {
+            margin: 0;
+            font-size: 2.2em;
+            font-weight: 800;
+            color: var(--accent);
+        }
         .info-header p { color: var(--text-muted); }
         #level-id-tag {
             background: var(--surface-2);
@@ -144,6 +149,15 @@
             z-index: 0;
         }
 
+        .demon-page-banner-video {
+            opacity: 0;
+            transition: opacity 0.35s ease;
+        }
+
+        .demon-page-banner-video.is-active {
+            opacity: 0.9;
+        }
+
         .demon-page-banner-background[hidden] {
             display: none !important;
         }
@@ -166,6 +180,103 @@
             margin: 4px 0 0;
             color: var(--text-muted);
             font-size: 0.82rem;
+        }
+
+        .banner-preview-editor {
+            margin: 2px 0 14px;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg);
+        }
+
+        .banner-preview-editor[hidden],
+        #minimum-list-percentage-field[hidden] {
+            display: none !important;
+        }
+
+        .banner-preview-title {
+            margin: 0 0 8px;
+            color: var(--text);
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
+        .banner-preview-video {
+            display: block;
+            width: min(100%, 360px);
+            aspect-ratio: 16 / 9;
+            margin: 0 auto;
+            object-fit: cover;
+            border-radius: calc(var(--radius-sm) - 2px);
+            background: #000;
+            pointer-events: none;
+        }
+
+        .banner-preview-frame-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .banner-preview-slider {
+            position: relative;
+            width: 100%;
+            height: 22px;
+            cursor: pointer;
+            touch-action: none;
+            user-select: none;
+            outline: none;
+            --slider-progress: 0%;
+        }
+
+        .banner-preview-slider-track {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 6px;
+            transform: translateY(-50%);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.16);
+            overflow: visible;
+        }
+
+        .banner-preview-slider-fill {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: var(--slider-progress);
+            border-radius: inherit;
+            background: var(--accent);
+            pointer-events: none;
+        }
+
+        .banner-preview-slider-thumb {
+            position: absolute;
+            top: 50%;
+            left: var(--slider-progress);
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--accent);
+            border: 2px solid rgba(255, 255, 255, 0.9);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        .banner-preview-slider:focus-visible .banner-preview-slider-thumb {
+            outline: 2px solid rgba(255, 255, 255, 0.75);
+            outline-offset: 2px;
+        }
+
+        .banner-preview-frame-time {
+            min-width: 72px;
+            text-align: right;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-variant-numeric: tabular-nums;
         }
 
         @media (max-width: 640px) {
@@ -527,7 +638,8 @@
     </style>
 </head>
 <body>
-    <img id="demon-page-banner-background" class="demon-page-banner-background" alt="" aria-hidden="true" hidden>
+    <img id="demon-page-banner-background" class="demon-page-banner-background demon-page-banner-image" alt="" aria-hidden="true" hidden>
+    <video id="demon-page-banner-video" class="demon-page-banner-background demon-page-banner-video" muted loop playsinline preload="auto" aria-hidden="true" hidden></video>
     <div id="global-nav"></div>
 
     <main class="page-content" id="main-content" style="display:none;">
@@ -539,7 +651,7 @@
                 <div id="level-upload-date-text"></div>
                 <div id="level-average-enjoyment-text"></div>
                 <div id="level-community-placement-text"></div>
-                <button type="button" id="level-banner-settings-button" class="level-banner-settings-button" onclick="openBannerSettings()" title="Banner settings" aria-label="Banner settings" hidden>
+                <button type="button" id="level-banner-settings-button" class="level-banner-settings-button" onclick="openBannerSettings()" title="Level settings" aria-label="Level settings" hidden>
                     <img src="/assets/settings-uhd.png" alt="">
                 </button>
             </div>
@@ -592,11 +704,29 @@
     <div class="record-moderation-overlay" id="banner-settings-overlay" aria-hidden="true">
         <div class="record-moderation-modal" role="dialog" aria-modal="true" aria-labelledby="banner-settings-title">
             <button type="button" class="record-moderation-close" onclick="closeBannerSettings()" aria-label="Close">&times;</button>
-            <h3 id="banner-settings-title">Level Banner</h3>
-            <p class="record-moderation-summary">This shows up as the background in the level card. Leave it blank to remove the banner.</p>
+            <h3 id="banner-settings-title">Level Settings</h3>
+            <p class="record-moderation-summary">Change this level's animated banner and list settings. Leave the banner blank to remove it.</p>
             <label class="record-moderation-field">
-                <span>Video URL</span>
+                <span>Banner URL</span>
                 <input id="banner-video-url" type="url" maxlength="2000" placeholder="https://example.com/banner.mp4" autocomplete="off">
+            </label>
+            <div id="banner-preview-editor" class="banner-preview-editor" hidden>
+                <div class="banner-preview-title">Start Frame:</div>
+                <video id="banner-settings-preview" class="banner-preview-video" muted playsinline preload="auto" tabindex="-1" aria-label="Banner frame preview"></video>
+                <div class="banner-preview-frame-row">
+                    <input id="banner-preview-time" type="hidden" value="0">
+                    <div id="banner-preview-slider" class="banner-preview-slider" role="slider" tabindex="0" aria-label="Static banner preview frame" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+                        <div class="banner-preview-slider-track">
+                            <div class="banner-preview-slider-fill"></div>
+                            <div class="banner-preview-slider-thumb"></div>
+                        </div>
+                    </div>
+                    <span id="banner-preview-time-label" class="banner-preview-frame-time">0.00s</span>
+                </div>
+            </div>
+            <label class="record-moderation-field" id="minimum-list-percentage-field" hidden>
+                <span>Minimum list %</span>
+                <input id="minimum-list-percentage" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="e.g. 50">
             </label>
             <div id="banner-settings-message" class="banner-settings-message" aria-live="polite"></div>
             <div class="record-moderation-actions">
@@ -685,6 +815,10 @@
         let currentDemonId = null;
         let currentBannerUrl = '';
         let currentBannerImageVersion = '';
+        let currentBannerPreviewTime = 0;
+        let bannerPreviewUrlTimer = null;
+        let currentRequirement = null;
+        let currentDemonListType = isImpossibleList ? 'impossible' : 'primary';
 
         if (isEmbedMode) {
             document.documentElement.classList.add('embed-mode');
@@ -1386,11 +1520,157 @@
         }
 
 
+        function clampBannerPreviewTime(value, duration = NaN) {
+            const requested = Math.max(0, Number(value) || 0);
+            if (Number.isFinite(duration) && duration > 0) {
+                return Math.min(requested, Math.max(0, duration - 0.05));
+            }
+            return requested;
+        }
+
+        function formatBannerPreviewTime(seconds) {
+            const value = Math.max(0, Number(seconds) || 0);
+            return `${value.toFixed(2)}s`;
+        }
+
+        function updateBannerPreviewTimeLabel(value) {
+            const label = document.getElementById('banner-preview-time-label');
+            if (label) label.textContent = formatBannerPreviewTime(value);
+        }
+
+        let bannerPreviewDesiredTime = 0;
+        let bannerPreviewSeekInFlight = false;
+        let bannerPreviewActivePointer = null;
+
+        function setBannerPreviewSliderState(value, maxValue) {
+            const input = document.getElementById('banner-preview-time');
+            const slider = document.getElementById('banner-preview-slider');
+            if (!input || !slider) return 0;
+
+            const max = Math.max(0, Number(maxValue) || 0);
+            const selected = Math.min(Math.max(0, Number(value) || 0), max || 0);
+            const progress = max > 0 ? (selected / max) * 100 : 0;
+
+            input.value = String(selected);
+            slider.dataset.max = String(max);
+            slider.setAttribute('aria-valuemax', String(max));
+            slider.setAttribute('aria-valuenow', String(selected));
+            slider.style.setProperty('--slider-progress', `${progress}%`);
+            updateBannerPreviewTimeLabel(selected);
+            return selected;
+        }
+
+        function finishBannerPreviewSeek(preview) {
+            bannerPreviewSeekInFlight = false;
+            if (!preview || preview.readyState < 1) return;
+            if (Math.abs((Number(preview.currentTime) || 0) - bannerPreviewDesiredTime) > 0.015) {
+                performBannerPreviewSeek();
+            }
+        }
+
+        function performBannerPreviewSeek() {
+            const preview = document.getElementById('banner-settings-preview');
+            if (!preview || preview.readyState < 1 || bannerPreviewSeekInFlight) return;
+
+            const target = clampBannerPreviewTime(bannerPreviewDesiredTime, preview.duration);
+            bannerPreviewDesiredTime = target;
+            preview.pause();
+
+            if (Math.abs((Number(preview.currentTime) || 0) - target) <= 0.005 && !preview.seeking) return;
+
+            bannerPreviewSeekInFlight = true;
+            let finished = false;
+            const done = () => {
+                if (finished) return;
+                finished = true;
+                finishBannerPreviewSeek(preview);
+            };
+
+            try {
+                if (typeof preview.requestVideoFrameCallback === 'function') {
+                    preview.requestVideoFrameCallback(done);
+                } else {
+                    preview.addEventListener('seeked', done, { once: true });
+                }
+                preview.currentTime = target;
+            } catch (_) {
+                bannerPreviewSeekInFlight = false;
+            }
+        }
+
+        function scrubBannerSettingsPreview(value) {
+            const preview = document.getElementById('banner-settings-preview');
+            const slider = document.getElementById('banner-preview-slider');
+            if (!preview || !slider) return;
+
+            const max = Number(slider.dataset.max) || 0;
+            const selected = setBannerPreviewSliderState(value, max);
+            bannerPreviewDesiredTime = clampBannerPreviewTime(selected, preview.duration);
+            performBannerPreviewSeek();
+        }
+
+        function scrubBannerPreviewFromPointer(event) {
+            const slider = document.getElementById('banner-preview-slider');
+            if (!slider) return;
+            const rect = slider.getBoundingClientRect();
+            if (!rect.width) return;
+            const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+            const max = Number(slider.dataset.max) || 0;
+            scrubBannerSettingsPreview(ratio * max);
+        }
+
+        function loadBannerSettingsPreview(url, requestedTime = 0) {
+            const editor = document.getElementById('banner-preview-editor');
+            const preview = document.getElementById('banner-settings-preview');
+            const slider = document.getElementById('banner-preview-slider');
+            if (!editor || !preview || !slider) return;
+
+            const bannerUrl = String(url || '').trim();
+            bannerPreviewSeekInFlight = false;
+            bannerPreviewDesiredTime = 0;
+            preview.pause();
+            preview.removeAttribute('src');
+            try { preview.load(); } catch (_) {}
+
+            if (!bannerUrl) {
+                editor.hidden = true;
+                setBannerPreviewSliderState(0, 0);
+                return;
+            }
+
+            editor.hidden = false;
+            setBannerPreviewSliderState(Math.max(0, Number(requestedTime) || 0), 0);
+            preview.src = bannerUrl;
+
+            const syncMetadata = () => {
+                const maxTime = Number.isFinite(preview.duration) && preview.duration > 0
+                    ? Math.max(0, preview.duration - 0.05)
+                    : 0;
+                const selected = clampBannerPreviewTime(requestedTime, preview.duration);
+                setBannerPreviewSliderState(selected, maxTime);
+                bannerPreviewDesiredTime = selected;
+                bannerPreviewSeekInFlight = false;
+                try { preview.currentTime = selected; } catch (_) {}
+                preview.pause();
+            };
+
+            preview.addEventListener('loadedmetadata', syncMetadata, { once: true });
+            preview.load();
+        }
+
         function syncDemonPageBanner() {
             const image = document.getElementById('demon-page-banner-background');
-            if (!image) return;
+            const video = document.getElementById('demon-page-banner-video');
+            if (!image || !video) return;
 
             const bannerUrl = String(currentBannerUrl || '').trim();
+
+            video.classList.remove('is-active');
+            video.pause();
+            video.removeAttribute('src');
+            video.hidden = true;
+            try { video.load(); } catch (_) {}
+
             if (!bannerUrl || !currentDemonId) {
                 image.removeAttribute('src');
                 image.hidden = true;
@@ -1402,6 +1682,44 @@
             image.onerror = () => { image.hidden = true; };
             const version = currentBannerImageVersion || bannerUrl;
             image.src = `/api/demons/${encodeURIComponent(currentDemonId)}/banner-image?v=${encodeURIComponent(version)}`;
+
+            video.hidden = false;
+            video.preload = 'auto';
+            video.muted = true;
+            video.loop = true;
+            video.playsInline = true;
+            video.src = bannerUrl;
+
+            const playVideo = () => {
+                const playPromise = video.play();
+                if (playPromise && typeof playPromise.then === 'function') {
+                    playPromise
+                        .then(() => video.classList.add('is-active'))
+                        .catch(() => {});
+                } else {
+                    video.classList.add('is-active');
+                }
+            };
+
+            const startVideoFromPreview = () => {
+                const target = clampBannerPreviewTime(currentBannerPreviewTime, video.duration);
+                if (Math.abs((Number(video.currentTime) || 0) - target) > 0.02) {
+                    const onSeeked = () => playVideo();
+                    video.addEventListener('seeked', onSeeked, { once: true });
+                    try {
+                        video.currentTime = target;
+                    } catch (_) {
+                        video.removeEventListener('seeked', onSeeked);
+                        playVideo();
+                    }
+                } else {
+                    playVideo();
+                }
+            };
+
+            if (video.readyState >= 1) startVideoFromPreview();
+            else video.addEventListener('loadedmetadata', startVideoFromPreview, { once: true });
+            video.load();
         }
 
         function syncBannerAdminButton() {
@@ -1445,9 +1763,18 @@
             if (!['admin', 'owner'].includes(recordModerationViewerRole) || !currentDemonId) return;
             const overlay = document.getElementById('banner-settings-overlay');
             const input = document.getElementById('banner-video-url');
+            const requirementField = document.getElementById('minimum-list-percentage-field');
+            const requirementInput = document.getElementById('minimum-list-percentage');
             const message = document.getElementById('banner-settings-message');
             input.value = currentBannerUrl || '';
+            const currentIsImpossibleList = currentDemonListType === 'impossible';
+            if (requirementField) requirementField.hidden = currentIsImpossibleList;
+            if (requirementInput) {
+                requirementInput.disabled = currentIsImpossibleList;
+                requirementInput.value = !currentIsImpossibleList && Number.isFinite(Number(currentRequirement)) ? String(currentRequirement) : '';
+            }
             message.textContent = '';
+            loadBannerSettingsPreview(input.value, currentBannerPreviewTime);
             overlay.classList.add('visible');
             overlay.setAttribute('aria-hidden', 'false');
             setTimeout(() => input.focus(), 0);
@@ -1455,6 +1782,16 @@
 
         function closeBannerSettings() {
             const overlay = document.getElementById('banner-settings-overlay');
+            const preview = document.getElementById('banner-settings-preview');
+            if (bannerPreviewUrlTimer) {
+                clearTimeout(bannerPreviewUrlTimer);
+                bannerPreviewUrlTimer = null;
+            }
+            if (preview) {
+                preview.pause();
+                preview.removeAttribute('src');
+                try { preview.load(); } catch (_) {}
+            }
             overlay.classList.remove('visible');
             overlay.setAttribute('aria-hidden', 'true');
         }
@@ -1462,29 +1799,46 @@
         async function saveBannerSettings() {
             if (!currentDemonId) return;
             const input = document.getElementById('banner-video-url');
+            const requirementInput = document.getElementById('minimum-list-percentage');
+            const previewTimeInput = document.getElementById('banner-preview-time');
             const message = document.getElementById('banner-settings-message');
             const saveButton = document.getElementById('save-banner-button');
             const bannerUrl = input.value.trim();
+            const payload = {
+                bannerUrl,
+                previewTime: bannerUrl ? Math.max(0, Number(previewTimeInput.value) || 0) : 0
+            };
+
+            if (currentDemonListType !== 'impossible') {
+                const requirement = Number(requirementInput.value);
+                if (!Number.isInteger(requirement) || requirement < 1 || requirement > 100) {
+                    message.textContent = 'Minimum list % must be a whole number from 1 to 100.';
+                    return;
+                }
+                payload.requirement = requirement;
+            }
 
             saveButton.disabled = true;
-            message.textContent = 'Saving...';
+            message.textContent = 'Saving selected frame...';
 
             try {
                 const response = await fetch(`/api/admin/demons/${currentDemonId}/banner`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ bannerUrl })
+                    body: JSON.stringify(payload)
                 });
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(data.error || 'Could not update banner.');
+                if (!response.ok) throw new Error(data.error || 'Could not update level settings.');
 
                 currentBannerUrl = data.banner_url || '';
                 currentBannerImageVersion = String(data.banner_image_updated_at || '');
+                currentBannerPreviewTime = Math.max(0, Number(data.banner_preview_time) || 0);
+                if (currentDemonListType !== 'impossible') currentRequirement = Number(data.requirement);
                 syncDemonPageBanner();
-                message.textContent = data.message || 'Banner updated.';
+                message.textContent = data.message || 'Level settings updated.';
                 setTimeout(closeBannerSettings, 450);
             } catch (err) {
-                message.textContent = err.message || 'Could not update banner.';
+                message.textContent = err.message || 'Could not update level settings.';
             } finally {
                 saveButton.disabled = false;
             }
@@ -1658,6 +2012,15 @@
             currentDemonId = Number(data.id) || Number(dbKey) || null;
             currentBannerUrl = String(data.banner_url || '');
             currentBannerImageVersion = String(data.banner_image_updated_at || '');
+            currentBannerPreviewTime = Math.max(0, Number(data.banner_preview_time) || 0);
+            currentRequirement = Number(data.requirement);
+            currentDemonListType = String(data.list_type || (isImpossibleList ? 'impossible' : 'primary')).toLowerCase();
+            document.body.classList.toggle('impossible-list', currentDemonListType === 'impossible');
+            const requirementField = document.getElementById('minimum-list-percentage-field');
+            if (requirementField) {
+                if (currentDemonListType === 'impossible') requirementField.remove();
+                else requirementField.hidden = false;
+            }
             syncDemonPageBanner();
             document.getElementById('not-found-content').style.display = 'none';
             document.getElementById('main-content').style.display = 'block';
@@ -1829,7 +2192,50 @@
             if (event.target === event.currentTarget) closeRecordModeration();
         });
 
+        document.getElementById('banner-settings-overlay').addEventListener('click', event => {
+            if (event.target === event.currentTarget) closeBannerSettings();
+        });
+
+        document.getElementById('banner-video-url').addEventListener('input', event => {
+            if (bannerPreviewUrlTimer) clearTimeout(bannerPreviewUrlTimer);
+            const nextUrl = event.currentTarget.value.trim();
+            bannerPreviewUrlTimer = setTimeout(() => {
+                const keepCurrentFrame = nextUrl === String(currentBannerUrl || '').trim();
+                loadBannerSettingsPreview(nextUrl, keepCurrentFrame ? currentBannerPreviewTime : 0);
+            }, 450);
+        });
+
+        const bannerPreviewSlider = document.getElementById('banner-preview-slider');
+        bannerPreviewSlider.addEventListener('pointerdown', event => {
+            if ((Number(bannerPreviewSlider.dataset.max) || 0) <= 0) return;
+            bannerPreviewActivePointer = event.pointerId;
+            bannerPreviewSlider.setPointerCapture(event.pointerId);
+            scrubBannerPreviewFromPointer(event);
+            event.preventDefault();
+        });
+        bannerPreviewSlider.addEventListener('pointermove', event => {
+            if (bannerPreviewActivePointer !== event.pointerId) return;
+            scrubBannerPreviewFromPointer(event);
+            event.preventDefault();
+        });
+        const finishBannerPreviewDrag = event => {
+            if (bannerPreviewActivePointer !== event.pointerId) return;
+            scrubBannerPreviewFromPointer(event);
+            try { bannerPreviewSlider.releasePointerCapture(event.pointerId); } catch (_) {}
+            bannerPreviewActivePointer = null;
+            event.preventDefault();
+        };
+        bannerPreviewSlider.addEventListener('pointerup', finishBannerPreviewDrag);
+        bannerPreviewSlider.addEventListener('pointercancel', event => {
+            if (bannerPreviewActivePointer === event.pointerId) bannerPreviewActivePointer = null;
+        });
+
         document.getElementById('demon-page-banner-background').addEventListener('error', event => {
+            event.currentTarget.hidden = true;
+        });
+
+        document.getElementById('demon-page-banner-video').addEventListener('error', event => {
+            event.currentTarget.classList.remove('is-active');
             event.currentTarget.hidden = true;
         });
 

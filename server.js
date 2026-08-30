@@ -11,7 +11,10 @@ const https = require('https');
 const axios = require('axios');
 const { randomBytes } = require('crypto');
 const ffmpeg = require('fluent-ffmpeg');
-if (process.env.FFMPEG_PATH) ffmpeg.setFfmpegPath(process.env.FFMPEG_PATH);
+let bundledFfmpegPath = null;
+try { bundledFfmpegPath = require('ffmpeg-static'); } catch (_) {}
+const resolvedFfmpegPath = process.env.FFMPEG_PATH || bundledFfmpegPath;
+if (resolvedFfmpegPath) ffmpeg.setFfmpegPath(resolvedFfmpegPath);
 require('dotenv').config();
 const app = express();
 app.use(cors({
@@ -44,6 +47,20 @@ const BANNER_PREVIEW_MAX_BYTES = 200 * 1024 * 1024;
 const BANNER_PREVIEW_DOWNLOAD_TIMEOUT_MS = 25000;
 const BANNER_PREVIEW_FFMPEG_TIMEOUT_MS = 25000;
 const bannerPreviewJobs = new Map();
+
+
+function hasPngSignature(buffer) {
+    return Buffer.isBuffer(buffer)
+        && buffer.length >= 8
+        && buffer[0] === 0x89
+        && buffer[1] === 0x50
+        && buffer[2] === 0x4E
+        && buffer[3] === 0x47
+        && buffer[4] === 0x0D
+        && buffer[5] === 0x0A
+        && buffer[6] === 0x1A
+        && buffer[7] === 0x0A;
+}
 
 function isPublicBannerIp(address) {
     const family = net.isIP(address);
@@ -155,11 +172,15 @@ async function downloadBannerVideoToTemp(rawUrl) {
     }
 }
 
-async function extractBannerJpeg(inputPath) {
+async function extractBannerJpeg(inputPath, previewTimeSeconds = 0) {
     const outputPath = path.join(os.tmpdir(), `wbdl-banner-frame-${randomBytes(12).toString('hex')}.jpg`);
     try {
         await new Promise((resolve, reject) => {
+            const safePreviewTime = Number.isFinite(Number(previewTimeSeconds)) && Number(previewTimeSeconds) >= 0
+                ? Number(previewTimeSeconds)
+                : 0;
             const command = ffmpeg(inputPath)
+                .seekOutput(safePreviewTime)
                 .frames(1)
                 .size('1280x?')
                 .outputOptions('-q:v 5')
@@ -188,10 +209,22 @@ async function extractBannerJpeg(inputPath) {
     }
 }
 
-async function captureBannerPreview(rawUrl) {
+async function captureBannerPreview(rawUrl, previewTimeSeconds = 0) {
     const inputPath = await downloadBannerVideoToTemp(rawUrl);
     try {
-        return await extractBannerJpeg(inputPath);
+        // Banners are video-only. Reject PNGs even when a CDN hides the extension.
+        const handle = await fs.promises.open(inputPath, 'r');
+        try {
+            const signature = Buffer.alloc(8);
+            await handle.read(signature, 0, 8, 0);
+            if (hasPngSignature(signature)) {
+                throw new Error('PNG banners are not supported. Use an animated video banner.');
+            }
+        } finally {
+            await handle.close();
+        }
+
+        return await extractBannerJpeg(inputPath, previewTimeSeconds);
     } finally {
         fs.promises.unlink(inputPath).catch(() => {});
     }
@@ -206,33 +239,40 @@ function runBannerPreviewJob(key, worker) {
 
 async function ensureBannerPreviewImage(demonId, list) {
     const result = await pool.query(`
-        SELECT banner_url, banner_image, banner_image_source_url
+        SELECT banner_url, banner_image, banner_image_source_url,
+               COALESCE(banner_preview_time, 0) AS banner_preview_time
         FROM demons
         WHERE id = $1 AND list_type = $2
     `, [demonId, list]);
     const row = result.rows[0];
     if (!row?.banner_url) return null;
-    if (row.banner_image && row.banner_image_source_url === row.banner_url) return row.banner_image;
+    if (row.banner_image && row.banner_image_source_url === row.banner_url && !hasPngSignature(row.banner_image)) return row.banner_image;
 
-    return runBannerPreviewJob(`${list}:${demonId}`, async () => {
+    const initialPreviewTime = Number(row.banner_preview_time) || 0;
+    return runBannerPreviewJob(`${list}:${demonId}:${initialPreviewTime}`, async () => {
         const latestResult = await pool.query(`
-            SELECT banner_url, banner_image, banner_image_source_url
+            SELECT banner_url, banner_image, banner_image_source_url,
+                   COALESCE(banner_preview_time, 0) AS banner_preview_time
             FROM demons
             WHERE id = $1 AND list_type = $2
         `, [demonId, list]);
         const latest = latestResult.rows[0];
         if (!latest?.banner_url) return null;
-        if (latest.banner_image && latest.banner_image_source_url === latest.banner_url) return latest.banner_image;
+        if (latest.banner_image && latest.banner_image_source_url === latest.banner_url && !hasPngSignature(latest.banner_image)) return latest.banner_image;
 
-        const image = await captureBannerPreview(latest.banner_url);
+        const previewTime = Number(latest.banner_preview_time) || 0;
+        const image = await captureBannerPreview(latest.banner_url, previewTime);
         const saved = await pool.query(`
             UPDATE demons
-            SET banner_image = $1,
-                banner_image_source_url = $4,
+            SET banner_image = $1::bytea,
+                banner_image_source_url = $4::text,
                 banner_image_updated_at = NOW()
-            WHERE id = $2 AND list_type = $3 AND banner_url = $4
+            WHERE id = $2::integer
+              AND list_type = $3::text
+              AND banner_url = $4::text
+              AND COALESCE(banner_preview_time, 0) = $5::double precision
             RETURNING banner_image
-        `, [image, demonId, list, latest.banner_url]);
+        `, [image, demonId, list, latest.banner_url, previewTime]);
         return saved.rows[0]?.banner_image || image;
     });
 }
@@ -494,7 +534,7 @@ async function queryCurrentDemonSnapshotRows(list) {
     const result = await pool.query(`
         SELECT 
             d.id, d.name, d.author, d.position, d.level_id, d.requirement, d.list_type,
-            d.showcase_url, d.banner_url, d.banner_image_updated_at,
+            d.showcase_url, d.banner_url, d.banner_image_updated_at, COALESCE(d.banner_preview_time, 0) AS banner_preview_time,
             (d.banner_image IS NOT NULL AND octet_length(d.banner_image) > 0) AS has_banner_image,
             CASE 
                 WHEN $1 = 'impossible' THEN d.showcase_url
@@ -3283,49 +3323,100 @@ app.patch('/api/admin/demons/:id/banner', isAdmin, async (req, res) => {
     let bannerUrl = null;
     if (rawBannerUrl) {
         if (rawBannerUrl.length > 2000) {
-            return res.status(400).json({ error: 'Banner video URL is too long.' });
+            return res.status(400).json({ error: 'Banner URL is too long.' });
         }
         try {
             bannerUrl = validateBannerMediaUrl(rawBannerUrl);
         } catch (_) {
-            return res.status(400).json({ error: 'Enter a valid public banner video URL.' });
+            return res.status(400).json({ error: 'Enter a valid public banner URL.' });
         }
     }
 
     try {
-        let bannerImage = null;
+        const currentResult = await pool.query(`
+            SELECT banner_url, banner_image, banner_image_source_url, requirement,
+                   COALESCE(banner_preview_time, 0) AS banner_preview_time
+            FROM demons
+            WHERE id = $1::integer AND list_type = $2::text
+        `, [demonId, list]);
+
+        if (!currentResult.rows.length) {
+            return res.status(404).json({ error: 'Level not found.' });
+        }
+
+        const current = currentResult.rows[0];
+        let requirement = Number(current.requirement) || 0;
+        if (list === 'primary' && Object.prototype.hasOwnProperty.call(req.body || {}, 'requirement')) {
+            const requestedRequirement = Number(req.body.requirement);
+            if (!Number.isInteger(requestedRequirement) || requestedRequirement < 1 || requestedRequirement > 100) {
+                return res.status(400).json({ error: 'Minimum list percentage must be a whole number from 1 to 100.' });
+            }
+            requirement = requestedRequirement;
+        }
+
+        let previewTime = 0;
         if (bannerUrl) {
-            try {
-                bannerImage = await captureBannerPreview(bannerUrl);
-            } catch (previewErr) {
-                console.error('Banner preview capture error:', previewErr);
-                return res.status(400).json({ error: 'Could not capture a static image from that banner video.' });
+            const requestedPreviewTime = Object.prototype.hasOwnProperty.call(req.body || {}, 'previewTime')
+                ? Number(req.body.previewTime)
+                : Number(current.banner_preview_time || 0);
+            if (!Number.isFinite(requestedPreviewTime) || requestedPreviewTime < 0 || requestedPreviewTime > 86400) {
+                return res.status(400).json({ error: 'Banner preview frame must be a valid video timestamp.' });
+            }
+            previewTime = Math.round(requestedPreviewTime * 100) / 100;
+        }
+
+        let bannerImage = null;
+        let refreshedBannerImage = false;
+        if (bannerUrl) {
+            const canReuseExistingPreview = Boolean(
+                current.banner_image &&
+                current.banner_url === bannerUrl &&
+                current.banner_image_source_url === bannerUrl &&
+                Math.abs((Number(current.banner_preview_time) || 0) - previewTime) < 0.005 &&
+                !hasPngSignature(current.banner_image)
+            );
+
+            if (canReuseExistingPreview) {
+                bannerImage = current.banner_image;
+            } else {
+                try {
+                    bannerImage = await captureBannerPreview(bannerUrl, previewTime);
+                    refreshedBannerImage = true;
+                } catch (previewErr) {
+                    console.error('Banner preview capture error:', previewErr);
+                    return res.status(400).json({ error: 'Could not capture that frame from the banner video. Make sure the selected frame is inside a direct MP4 or WebM video.' });
+                }
             }
         }
 
         const result = await pool.query(`
             UPDATE demons
-            SET banner_url = $1,
-                banner_image = $2,
-                banner_image_source_url = $1,
-                banner_image_updated_at = CASE WHEN $1 IS NULL THEN NULL ELSE NOW() END
-            WHERE id = $3 AND list_type = $4
-            RETURNING banner_url, banner_image_updated_at
-        `, [bannerUrl, bannerImage, demonId, list]);
-
-        if (!result.rows.length) {
-            return res.status(404).json({ error: 'Level not found.' });
-        }
+            SET banner_url = $1::text,
+                banner_image = $2::bytea,
+                banner_image_source_url = $1::text,
+                banner_image_updated_at = CASE
+                    WHEN $1::text IS NULL THEN NULL::timestamptz
+                    WHEN $5::boolean THEN NOW()
+                    ELSE banner_image_updated_at
+                END,
+                requirement = $6::integer,
+                banner_preview_time = $7::double precision
+            WHERE id = $3::integer AND list_type = $4::text
+            RETURNING banner_url, banner_image_updated_at, requirement,
+                      COALESCE(banner_preview_time, 0) AS banner_preview_time
+        `, [bannerUrl, bannerImage, demonId, list, refreshedBannerImage, requirement, previewTime]);
 
         return res.json({
-            message: bannerUrl ? 'Banner updated.' : 'Banner removed.',
+            message: bannerUrl ? 'Level settings updated.' : 'Level settings updated; banner removed.',
             banner_url: result.rows[0].banner_url || null,
             has_banner_image: Boolean(bannerImage),
             banner_image_updated_at: result.rows[0].banner_image_updated_at || null,
+            banner_preview_time: Number(result.rows[0].banner_preview_time) || 0,
+            requirement: Number(result.rows[0].requirement) || 0,
         });
     } catch (err) {
         console.error('Banner update error:', err);
-        return res.status(500).json({ error: 'Could not update banner.' });
+        return res.status(500).json({ error: 'Could not update level settings.' });
     }
 });
 
@@ -4275,7 +4366,7 @@ app.get('/api/demons/:id', async (req, res) => {
     try {
         const demonResult = await pool.query(`
             SELECT id, name, author, position, level_id, requirement, list_type, showcase_url,
-                   banner_url, banner_image_updated_at,
+                   banner_url, banner_image_updated_at, COALESCE(banner_preview_time, 0) AS banner_preview_time,
                    (banner_image IS NOT NULL AND octet_length(banner_image) > 0) AS has_banner_image
             FROM demons
             WHERE id = $1

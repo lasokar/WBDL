@@ -43,6 +43,7 @@
         .list-header h1 {
             font-size: 2.6em;
             margin-bottom: 14px;
+            font-weight: 800;
             color: var(--accent);
         }
 
@@ -248,6 +249,12 @@
             border: 1px solid var(--border);
             white-space: nowrap;
             margin-left: 30px;
+        }
+
+        .wr-badge.has-decimal {
+            font-size: 0.98em;
+            padding: 7px 10px;
+            letter-spacing: -0.02em;
         }
 
 
@@ -482,6 +489,11 @@
         }
 
         @media (max-width: 768px) {
+            .demon-banner-image,
+            .demon-banner-video {
+                display: none !important;
+            }
+
             .demon-card {
                 flex-direction: column;
             }
@@ -633,6 +645,7 @@
         }
 
         const desktopLayoutQuery = window.matchMedia('(min-width: 1500px)');
+        const verticalMobileLayoutQuery = window.matchMedia('(max-width: 768px)');
         let selectedDemonId = '';
         let lastKnownHeaderHeight = 72;
 
@@ -915,6 +928,7 @@
         }
 
         function warmBannerConnections(demons) {
+            if (verticalMobileLayoutQuery.matches) return;
             const origins = [];
             const seen = new Set();
             (Array.isArray(demons) ? demons : []).forEach(demon => {
@@ -939,9 +953,13 @@
         }
 
         function hydrateLevelBannerVideos(demons) {
+            if (verticalMobileLayoutQuery.matches) return;
             const bannerById = new Map((Array.isArray(demons) ? demons : [])
                 .filter(demon => demon && demon.id != null && demon.banner_url)
-                .map(demon => [String(demon.id), String(demon.banner_url)]));
+                .map(demon => [String(demon.id), {
+                    url: String(demon.banner_url),
+                    previewTime: Math.max(0, Number(demon.banner_preview_time) || 0)
+                }]));
 
             const videos = Array.from(document.querySelectorAll('.demon-card[data-demon-id] .demon-banner-video'));
 
@@ -949,31 +967,55 @@
                 const card = video.closest('.demon-card');
                 if (!card) return;
 
-                const src = bannerById.get(String(card.dataset.demonId || ''));
-                if (!src) return;
-
+                const banner = bannerById.get(String(card.dataset.demonId || ''));
+                if (!banner) return;
                 video.preload = 'none';
-                video.dataset.src = src;
+                video.dataset.src = banner.url;
+                video.dataset.previewTime = String(banner.previewTime);
+
+                const getPreviewTime = () => {
+                    const requested = Math.max(0, Number(video.dataset.previewTime) || 0);
+                    if (Number.isFinite(video.duration) && video.duration > 0) {
+                        return Math.min(requested, Math.max(0, video.duration - 0.05));
+                    }
+                    return requested;
+                };
+
+                const seekToPreview = () => {
+                    try { video.currentTime = getPreviewTime(); } catch (_) {}
+                };
+
+                const playFromPreview = () => {
+                    seekToPreview();
+                    const promise = video.play();
+                    if (promise && typeof promise.then === 'function') {
+                        promise.then(() => video.classList.add('is-active')).catch(() => {});
+                    } else {
+                        video.classList.add('is-active');
+                    }
+                };
+
+                let shouldPlayBanner = false;
 
                 const playBanner = () => {
+                    shouldPlayBanner = true;
                     if (!video.getAttribute('src')) {
                         video.src = video.dataset.src;
                         video.load();
                     }
-                    const promise = video.play();
-                    if (promise && typeof promise.then === 'function') {
-                        promise.then(() => video.classList.add('is-active')).catch(() => {});
-                    }
+                    const startIfStillHovered = () => {
+                        if (shouldPlayBanner) playFromPreview();
+                    };
+                    if (video.readyState >= 1) startIfStillHovered();
+                    else video.addEventListener('loadedmetadata', startIfStillHovered, { once: true });
                 };
 
                 const resetBanner = () => {
+                    shouldPlayBanner = false;
                     video.classList.remove('is-active');
                     video.pause();
-                    const seekToStart = () => {
-                        try { video.currentTime = 0; } catch (_) {}
-                    };
-                    if (video.readyState >= 1) seekToStart();
-                    else video.addEventListener('loadedmetadata', seekToStart, { once: true });
+                    if (video.readyState >= 1) seekToPreview();
+                    else video.addEventListener('loadedmetadata', seekToPreview, { once: true });
                 };
 
                 card.addEventListener('mouseenter', playBanner);
@@ -1018,6 +1060,7 @@
             }
 
             const nonYtVideoQueue = [];
+            const renderBanners = !verticalMobileLayoutQuery.matches;
 
             const htmlContent = filteredDemons.map(demon => {
                 const isPlaceholder = isTimeMachinePlaceholder(demon);
@@ -1042,7 +1085,8 @@
                         ? Math.max(...records.map(r => r.percentage || 0)) 
                         : 0;
                     
-                    sideContentHtml = `<div class="wr-badge">WR: ${bestPercentage}%</div>`;
+                    const wrHasDecimal = !Number.isInteger(Number(bestPercentage));
+                    sideContentHtml = `<div class="wr-badge${wrHasDecimal ? ' has-decimal' : ''}">WR: ${bestPercentage}%</div>`;
                 } else {
                     const fullPoints = 250 * Math.exp(-0.0263 * (demon.position - 1));
                     const reqPoints = fullPoints / 10;
@@ -1077,8 +1121,8 @@
                 const isCompleted = !isPlaceholder && completedDemonIds.has(Number(demon.id));
                 const cardHtml = `
                     <div class="demon-card ${isPlaceholder ? 'time-machine-placeholder' : ''} ${isCompleted ? 'completed-level' : ''}" data-demon-id="${isPlaceholder ? '' : demon.id}">
-                        ${!isPlaceholder && demon.banner_url ? `<img class="demon-banner-image" src="/api/demons/${encodeURIComponent(demon.id)}/banner-image?v=${encodeURIComponent(demon.banner_image_updated_at || demon.banner_url)}" alt="" aria-hidden="true">` : ''}
-                        ${!isPlaceholder && demon.banner_url ? '<video class="demon-banner-video" muted loop playsinline preload="none" aria-hidden="true"></video>' : ''}
+                        ${renderBanners && !isPlaceholder && demon.banner_url ? `<img class="demon-banner-image" src="/api/demons/${encodeURIComponent(demon.id)}/banner-image?v=${encodeURIComponent(demon.banner_image_updated_at || demon.banner_url)}" alt="" aria-hidden="true">` : ''}
+                        ${renderBanners && !isPlaceholder && demon.banner_url ? '<video class="demon-banner-video" muted loop playsinline preload="none" aria-hidden="true"></video>' : ''}
                         <div class="thumbnail-box">
                             <img id="${imgId}" src="${thumbUrl}" alt="${demon.name} thumbnail">
                         </div>
@@ -1156,6 +1200,16 @@
             desktopLayoutQuery.addEventListener('change', syncEmbeddedLayout);
         } else if (desktopLayoutQuery.addListener) {
             desktopLayoutQuery.addListener(syncEmbeddedLayout);
+        }
+
+        const handleVerticalMobileLayoutChange = () => {
+            if (!verticalMobileLayoutQuery.matches) warmBannerConnections(allDemons);
+            renderDemons();
+        };
+        if (verticalMobileLayoutQuery.addEventListener) {
+            verticalMobileLayoutQuery.addEventListener('change', handleVerticalMobileLayoutChange);
+        } else if (verticalMobileLayoutQuery.addListener) {
+            verticalMobileLayoutQuery.addListener(handleVerticalMobileLayoutChange);
         }
 
 

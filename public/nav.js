@@ -295,6 +295,9 @@ async function loadNavbar() {
 
     const themeColor = isImpossibleList ? "#ff4444" : "#00e676";
     const brandName = isImpossibleList ? "WBDL Impossible List" : "Web Browser Demonlist";
+    const brandTextStyle = isImpossibleList
+        ? `color: ${themeColor}; font-weight: 800;`
+        : `font-weight: 800; background: linear-gradient(135deg, #5f91b8 0%, #8bb8dc 34%, #79a9cf 66%, #527fa6 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;`;
 
     const brandIcon = isImpossibleList ? "/assets/impossible.png" : "/assets/icon.png";
 
@@ -388,9 +391,9 @@ async function loadNavbar() {
         </style>
         <nav style="width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 14px 30px; background: var(--surface); border-bottom: 1px solid var(--border); box-sizing: border-box;">
             <div style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap;">
-                <a href="/" style="display: flex; align-items: center; gap: 11px; font-family: var(--font-display); font-size: 1.15em; letter-spacing: 0.5px; color: ${themeColor}; text-decoration: none;">
+                <a href="/" style="display: flex; align-items: center; gap: 11px; font-family: var(--font-display); font-size: 1.15em; letter-spacing: 0.5px; text-decoration: none;">
                     <img src="${brandIcon}" alt="WBDL Icon" style="height: 30px; width: auto; border-radius: 6px;">
-                    <span>${brandName}</span>
+                    <span style="${brandTextStyle}">${brandName}</span>
                 </a>
                 <a href="/leaderboard" style="${navLink}">Leaderboard</a>
                 <a href="/clans" style="${navLink}">Clans</a>
