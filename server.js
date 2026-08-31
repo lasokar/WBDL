@@ -2160,9 +2160,7 @@ app.post('/api/submit', async (req, res) => {
         });
         if (reuse) {
             await client.query('ROLLBACK');
-            return res.json({ message: activeRecord
-                ? "Record updated and awaiting review!"
-                : "Record submitted successfully!" }); // Not really, the video was already used LMAO
+            return res.json({ message: activeRecord ? "That video has already been used." : "That video has already been used." });
         }
 
         if (activeRecord) {
@@ -5373,7 +5371,7 @@ app.post('/api/submit-verification', async (req, res) => {
         const reuse = await findActiveVideoReuse(client, normalizedVideo.key);
         if (reuse) {
             await client.query('ROLLBACK');
-            return res.json({ message: "Verification submitted successfully!" }); // Not really, the video was already used LMAO
+            return res.json({ message: "That video has already been used." });
         }
 
         const insertedVerification = await client.query(
