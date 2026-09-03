@@ -289,8 +289,8 @@ const validateUsername = (username) => {
 
 const validateDisplayName = (displayName) => {
     const value = String(displayName ?? '');
-    if (!/^[A-Za-z0-9 ._-]*$/.test(value)) {
-        return "Display names can only contain letters, numbers, spaces, periods, dashes, and underscores.";
+    if (!/^[A-Za-z0-9 ._:;()<>*!?#-]*$/.test(value)) {
+        return "Display name uses disallowed characters.";
     }
     return null;
 };
