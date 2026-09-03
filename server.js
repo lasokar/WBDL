@@ -287,6 +287,14 @@ const validateUsername = (username) => {
     return null;
 };
 
+const validateDisplayName = (displayName) => {
+    const value = String(displayName ?? '');
+    if (!/^[A-Za-z0-9 ._-]*$/.test(value)) {
+        return "Display names can only contain letters, numbers, spaces, periods, dashes, and underscores.";
+    }
+    return null;
+};
+
 const validatePassword = (password) => {
     if (!password || password.length < 6) {
         return "Password must be at least 6 characters.";
@@ -4724,8 +4732,9 @@ app.post('/api/settings/profile', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
 
     const rawDisplayName = String(req.body.displayName || '');
-    if (/[\[\]\(\)]/.test(rawDisplayName)) {
-        return res.status(400).json({ error: 'Invalid display name.' });
+    const displayNameError = validateDisplayName(rawDisplayName);
+    if (displayNameError) {
+        return res.status(400).json({ error: displayNameError });
     }
 
     const socialLinks = req.body.socialLinks || {};
