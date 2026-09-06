@@ -787,9 +787,24 @@ function normalizeVideoSubmission(value) {
     }
 }
 
-async function findActiveVideoReuse(db, videoKey, { excludeRecordId = null, excludeVerificationId = null } = {}) {
+async function canReuseOwnSubmissionVideo(db, userId) {
+    const result = await db.query(`
+        SELECT created_at <= NOW() - INTERVAL '7 days' AS can_reuse
+        FROM users
+        WHERE id = $1
+    `, [userId]);
+    return Boolean(result.rows[0]?.can_reuse);
+}
+
+async function findActiveVideoReuse(db, videoKey, {
+    excludeRecordId = null,
+    excludeVerificationId = null,
+    allowOwnUserId = null,
+} = {}) {
+    const allowedOwnUserId = allowOwnUserId == null ? null : Number(allowOwnUserId);
+
     const recordResult = await db.query(`
-        SELECT id, video_url
+        SELECT id, user_id, video_url
         FROM records
         WHERE status IN ('pending', 'accepted', 'rejected')
           AND video_url IS NOT NULL
@@ -799,11 +814,13 @@ async function findActiveVideoReuse(db, videoKey, { excludeRecordId = null, excl
 
     for (const row of recordResult.rows) {
         const normalized = normalizeVideoSubmission(row.video_url);
-        if (normalized && normalized.key === videoKey) return { type: 'record', id: row.id };
+        if (!normalized || normalized.key !== videoKey) continue;
+        if (allowedOwnUserId !== null && Number(row.user_id) === allowedOwnUserId) continue;
+        return { type: 'record', id: row.id, userId: row.user_id };
     }
 
     const verificationResult = await db.query(`
-        SELECT id, video_url
+        SELECT id, user_id, video_url
         FROM verifications
         WHERE status IN ('pending', 'accepted', 'rejected')
           AND video_url IS NOT NULL
@@ -813,7 +830,9 @@ async function findActiveVideoReuse(db, videoKey, { excludeRecordId = null, excl
 
     for (const row of verificationResult.rows) {
         const normalized = normalizeVideoSubmission(row.video_url);
-        if (normalized && normalized.key === videoKey) return { type: 'verification', id: row.id };
+        if (!normalized || normalized.key !== videoKey) continue;
+        if (allowedOwnUserId !== null && Number(row.user_id) === allowedOwnUserId) continue;
+        return { type: 'verification', id: row.id, userId: row.user_id };
     }
 
     return null;
@@ -2163,8 +2182,10 @@ app.post('/api/submit', async (req, res) => {
         }
 
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedVideo.key]);
+        const canReuseOwnVideo = await canReuseOwnSubmissionVideo(client, req.session.userId);
         const reuse = await findActiveVideoReuse(client, normalizedVideo.key, {
             excludeRecordId: activeRecord ? Number(activeRecord.id) : null,
+            allowOwnUserId: canReuseOwnVideo ? req.session.userId : null,
         });
         if (reuse) {
             await client.query('ROLLBACK');
@@ -2338,7 +2359,11 @@ app.patch('/api/records/pending/:recordId', async (req, res) => {
         }
 
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedVideo.key]);
-        const reuse = await findActiveVideoReuse(client, normalizedVideo.key, { excludeRecordId: recordId });
+        const canReuseOwnVideo = await canReuseOwnSubmissionVideo(client, req.session.userId);
+        const reuse = await findActiveVideoReuse(client, normalizedVideo.key, {
+            excludeRecordId: recordId,
+            allowOwnUserId: canReuseOwnVideo ? req.session.userId : null,
+        });
         if (reuse) {
             await client.query('ROLLBACK');
             return res.status(409).json({ error: "That video has already been used." });
@@ -3846,7 +3871,11 @@ app.patch('/api/verifications/pending/:verifId', async (req, res) => {
         }
 
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedVideo.key]);
-        const reuse = await findActiveVideoReuse(client, normalizedVideo.key, { excludeVerificationId: verifId });
+        const canReuseOwnVideo = await canReuseOwnSubmissionVideo(client, req.session.userId);
+        const reuse = await findActiveVideoReuse(client, normalizedVideo.key, {
+            excludeVerificationId: verifId,
+            allowOwnUserId: canReuseOwnVideo ? req.session.userId : null,
+        });
         if (reuse) {
             await client.query('ROLLBACK');
             return res.status(409).json({ error: 'That video has already been used.' });
@@ -5377,7 +5406,10 @@ app.post('/api/submit-verification', async (req, res) => {
         }
 
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [normalizedVideo.key]);
-        const reuse = await findActiveVideoReuse(client, normalizedVideo.key);
+        const canReuseOwnVideo = await canReuseOwnSubmissionVideo(client, userId);
+        const reuse = await findActiveVideoReuse(client, normalizedVideo.key, {
+            allowOwnUserId: canReuseOwnVideo ? userId : null,
+        });
         if (reuse) {
             await client.query('ROLLBACK');
             return res.json({ message: "That video has already been used." });
