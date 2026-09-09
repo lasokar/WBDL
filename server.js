@@ -289,6 +289,9 @@ const validateUsername = (username) => {
 
 const validateDisplayName = (displayName) => {
     const value = String(displayName ?? '');
+    if (value.length > 30) {
+        return "Display name must be 30 characters or fewer.";
+    }
     if (!/^[A-Za-z0-9 ._:;()<>*!?#-]*$/.test(value)) {
         return "Display name uses disallowed characters.";
     }
@@ -303,6 +306,32 @@ const validatePassword = (password) => {
 };
 
 const PROFILE_ICON_TYPES = new Set(['cube', 'ship', 'ball', 'ufo', 'wave', 'robot', 'spider', 'swing', 'jetpack']);
+const PROFILE_ICON_MAX_IDS = Object.freeze({
+    cube: 485,
+    ship: 169,
+    ball: 118,
+    ufo: 149,
+    wave: 96,
+    robot: 68,
+    spider: 69,
+    swing: 43,
+    jetpack: 8,
+});
+
+const validateProfileIcon = (icon = {}) => {
+    const type = String(icon.type || '');
+    const rawId = String(icon.id ?? '');
+    if (!PROFILE_ICON_TYPES.has(type) || !/^\d+$/.test(rawId)) {
+        return "Invalid icon selection.";
+    }
+
+    const id = Number(rawId);
+    const maxId = PROFILE_ICON_MAX_IDS[type];
+    if (!Number.isSafeInteger(id) || id < 1 || id > maxId) {
+        return "Invalid icon selection.";
+    }
+    return null;
+};
 
 const cleanProfileText = (value, maxLength) => {
     const text = String(value ?? '').trim();
@@ -4767,10 +4796,15 @@ app.post('/api/settings/profile', async (req, res) => {
     }
 
     const socialLinks = req.body.socialLinks || {};
-    const icon = cleanProfileIcon(req.body.icon || {});
+    const rawIcon = req.body.icon || {};
+    const iconError = validateProfileIcon(rawIcon);
+    if (iconError) {
+        return res.status(400).json({ error: iconError });
+    }
+    const icon = cleanProfileIcon(rawIcon);
 
     const profile = {
-        displayName: cleanProfileText(rawDisplayName, 40),
+        displayName: cleanProfileText(rawDisplayName, 30),
         bio: cleanProfileText(req.body.bio, 500),
         pronouns: cleanProfileText(req.body.pronouns, 60),
         country: cleanProfileText(req.body.country, 80),

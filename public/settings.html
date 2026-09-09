@@ -1320,7 +1320,7 @@
                 <div class="section">
                     <h2>Profile Info</h2>
                     <label>Display Name</label>
-                    <input type="text" id="profile-display-name" placeholder="Display name" maxlength="40" pattern="[A-Za-z0-9 ._:;()<>*!?#-]*">
+                    <input type="text" id="profile-display-name" placeholder="Display name" maxlength="30" pattern="[A-Za-z0-9 ._:;()<>*!?#-]*">
                     <label>Bio</label>
                     <textarea id="profile-bio" placeholder="Write something about yourself..." maxlength="500"></textarea>
                     <div class="field-grid">
@@ -2788,6 +2788,9 @@
         async function updateProfileSettings() {
             const displayNameInput = document.getElementById('profile-display-name');
             const displayName = displayNameInput.value;
+            if (displayName.length > 30) {
+                return showMessage('profile-msg', 'Display name too long.', true);
+            }
             if (!/^[A-Za-z0-9 ._:;()<>*!?#-]*$/.test(displayName)) {
                 return showMessage('profile-msg', 'Display name invalid.', true);
             }
