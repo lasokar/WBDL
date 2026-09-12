@@ -5015,28 +5015,107 @@ app.delete('/api/settings/delete', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
 
     const { password } = req.body;
-    const userId = req.session.userId;
+    const userId = Number(req.session.userId);
     const client = await pool.connect();
+    let newUsername = null;
 
     try {
-        const userRes = await client.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+        await client.query('BEGIN');
+
+        const userRes = await client.query(`
+            SELECT id, password_hash, role
+            FROM users
+            WHERE id = $1
+            FOR UPDATE
+        `, [userId]);
         const user = userRes.rows[0];
-        if (!user) return res.status(404).json({ error: "User not found." });
+        if (!user) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: "User not found." });
+        }
 
         const isMatch = await bcrypt.compare(password, user.password_hash);
         if (!isMatch) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: "Incorrect password. Account was not deleted." });
         }
 
-        await client.query('BEGIN');
+        if (isStaffRole(user.role)) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: "Staff accounts cannot be deleted this way." });
+        }
+
+        for (let attempt = 0; attempt < 20; attempt++) {
+            const candidate = makeResetAccountUsername();
+            const duplicate = await client.query(`
+                SELECT 1 FROM users WHERE LOWER(username) = LOWER($1)
+                UNION ALL
+                SELECT 1 FROM pending_users WHERE LOWER(username) = LOWER($1)
+                LIMIT 1
+            `, [candidate]);
+            if (!duplicate.rows.length) {
+                newUsername = candidate;
+                break;
+            }
+        }
+        if (!newUsername) throw new Error('Could not generate a unique reset username.');
+
+        await client.query(`
+            UPDATE users
+            SET account_disabled = TRUE,
+                account_disabled_reason = 'Account Deleted!',
+                account_disabled_at = NOW(),
+                account_disabled_by = NULL
+            WHERE id = $1
+        `, [userId]);
+
+        await client.query(`
+            DELETE FROM notifications
+            WHERE user_id = $1 OR actor_id = $1
+        `, [userId]);
+
+        await client.query(`
+            DELETE FROM verifications
+            WHERE user_id = $1 AND status IN ('pending', 'rejected')
+        `, [userId]);
         await client.query('DELETE FROM records WHERE user_id = $1', [userId]);
-        await client.query('DELETE FROM users WHERE id = $1', [userId]);
+
+        await client.query('DELETE FROM pending_email_changes WHERE user_id = $1', [userId]);
+
+        await client.query(`
+            UPDATE users
+            SET username = $1,
+                display_name = '',
+                bio = '',
+                pronouns = '',
+                country = '',
+                social_youtube = '',
+                social_twitter = '',
+                social_twitch = '',
+                social_discord = '',
+                social_reddit = '',
+                social_gdbrowser = '',
+                discord_id = NULL,
+                discord_username = NULL,
+                icon_type = 'cube',
+                icon_id = 1,
+                color1 = 1,
+                color2 = 3,
+                glow = -1,
+                badges = '[]'::jsonb,
+                submission_notifications = FALSE,
+                submission_discord_ping = FALSE,
+                verification_notifications = FALSE,
+                verification_discord_ping = FALSE
+            WHERE id = $2
+        `, [newUsername, userId]);
+
         await client.query('COMMIT');
 
         for (const list of ['primary', 'impossible']) {
             const sync = await syncLeaderboardTopOne(list);
             for (const changedUserId of sync.changedUserIds || []) {
-                await evaluateUserBadges(changedUserId, list);
+                if (changedUserId) await evaluateUserBadges(changedUserId, list);
             }
         }
 
@@ -5044,7 +5123,7 @@ app.delete('/api/settings/delete', async (req, res) => {
         res.json({ message: "Account deleted." });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
-        console.error(err);
+        console.error('Account deletion/reset error:', err);
         res.status(500).json({ error: "Server error during deletion." });
     } finally {
         client.release();
