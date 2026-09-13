@@ -7,49 +7,41 @@
     <link rel="icon" type="image/png" href="/assets/icon.png">
     <link rel="stylesheet" href="/style.css">
     <style>
-        .auth-wrapper {
-            flex-grow: 1;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            padding: 90px 20px;
-        }
+        .auth-wrapper { flex-grow:1; display:flex; justify-content:center; align-items:flex-start; padding:90px 20px; }
+        .auth-box { background:var(--surface); padding:2.4rem; border-radius:var(--radius); border:1px solid var(--border); width:100%; max-width:360px; height:fit-content; }
+        button { width:100%; padding:13px; background:var(--accent); border:none; color:#000; font-family:var(--font-body); font-weight:700; cursor:pointer; margin-top:12px; border-radius:var(--radius-sm); transition:background-color .15s; }
+        button:hover:not(:disabled) { background:var(--accent-hover); }
+        button:disabled { opacity:.45; cursor:not-allowed; }
+        h2 { margin:0 0 20px; text-align:center; color:var(--text); font-size:1.7em; }
+        #auth-message { text-align:center; margin-bottom:12px; font-size:.9em; min-height:1.2em; font-weight:600; }
+        input { width:100%; padding:12px 14px; margin:8px 0; background:var(--bg); border:1px solid var(--border); color:var(--text); box-sizing:border-box; border-radius:var(--radius-sm); font-size:.95em; transition:border-color .15s; }
+        input:focus { outline:none; border-color:var(--accent); }
+        .secondary-link { display:block; text-align:center; color:var(--text-muted); text-decoration:none; margin-top:18px; font-size:.9em; }
+        .secondary-link:hover { color:var(--accent); }
+        .back-link { color:var(--text-faint); text-decoration:none; display:block; text-align:center; margin-top:18px; font-size:.8em; }
+        .reset-link-container { display:flex; justify-content:flex-end; margin:6px 0 8px; }
+        .reset-link { color:var(--text-muted); text-decoration:none; font-size:.8em; }
+        .reset-link:hover { color:var(--text); text-decoration:underline; }
+        .hidden { display:none !important; }
 
-        .auth-box {
-            background: var(--surface);
-            padding: 2.4rem;
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            width: 100%;
-            max-width: 360px;
-            height: fit-content;
-        }
-        button {
-            width: 100%;
-            padding: 13px;
-            background: var(--accent);
-            border: none;
-            color: #000;
-            font-family: var(--font-body);
-            font-weight: 700;
-            cursor: pointer;
-            margin-top: 12px;
-            border-radius: var(--radius-sm);
-            transition: background-color 0.15s;
-        }
-        button:hover:not(:disabled) { background: var(--accent-hover); }
-        button:disabled { opacity: 0.45; cursor: not-allowed; }
-
-        h2 { margin: 0 0 20px; text-align: center; color: var(--text); font-size: 1.7em; }
-        #auth-message { text-align: center; margin-bottom: 12px; font-size: 0.9em; min-height: 1.2em; font-weight: 600; }
-        input { width: 100%; padding: 12px 14px; margin: 8px 0; background: var(--bg); border: 1px solid var(--border); color: var(--text); box-sizing: border-box; border-radius: var(--radius-sm); font-size: 0.95em; transition: border-color 0.15s; }
-        input:focus { outline: none; border-color: var(--accent); }
-        .secondary-link { display: block; text-align: center; color: var(--text-muted); text-decoration: none; margin-top: 18px; font-size: 0.9em; }
-        .secondary-link:hover { color: var(--accent); }
-        .back-link { color: var(--text-faint); text-decoration: none; display: block; text-align: center; margin-top: 18px; font-size: 0.8em; }
-        .reset-link-container { display: flex; justify-content: flex-end; margin: 6px 0 8px; }
-        .reset-link { color: var(--text-muted); text-decoration: none; font-size: 0.8em; }
-        .reset-link:hover { color: var(--text); text-decoration: underline; }
+        .two-factor-overlay { position:fixed; inset:0; z-index:10050; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(0,0,0,.66); backdrop-filter:blur(4px); }
+        .two-factor-modal { position:relative; width:min(420px, 100%); background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; box-sizing:border-box; }
+        .two-factor-modal h2 { margin-bottom:10px; }
+        .two-factor-close { position:absolute; right:12px; top:10px; width:34px; height:34px; margin:0; padding:0; background:transparent; border:0; color:var(--text-muted); font-size:1.6rem; line-height:1; }
+        .two-factor-close:hover:not(:disabled) { background:transparent; color:var(--text); }
+        .two-factor-help, .two-factor-message { color:var(--text-muted); font-size:.9em; line-height:1.5; text-align:center; margin:0 0 12px; }
+        .two-factor-message { min-height:1.2em; font-weight:600; }
+        .two-factor-message:empty { display:none; min-height:0; margin:0; }
+        .two-factor-choice { display:grid; gap:10px; margin-top:12px; }
+        .two-factor-choice button { margin:0; background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
+        .two-factor-choice button:hover:not(:disabled) { background:var(--bg); border-color:var(--accent); }
+        .two-factor-actions { display:grid; gap:8px; }
+        .two-factor-nav-row { display:flex; gap:8px; align-items:center; }
+        .two-factor-nav-row .two-factor-back { flex:1 1 0; width:auto; margin-top:2px; }
+        .two-factor-secondary { background:var(--surface-2); color:var(--text); border:1px solid var(--border); margin-top:4px; }
+        .two-factor-secondary:hover:not(:disabled) { background:var(--bg); }
+        .two-factor-back { background:transparent; color:var(--text-muted); border:none; padding:8px; margin-top:2px; }
+        .two-factor-back:hover:not(:disabled) { background:transparent; color:var(--text); }
     </style>
 </head>
 <body>
@@ -58,59 +50,208 @@
         <div class="auth-box">
             <h2>Login</h2>
             <div id="auth-message"></div>
-            <input type="text" id="username" placeholder="Username">
-            <input type="password" id="password" placeholder="Password">
-            <div class="reset-link-container">
-                <a href="/forgot-password" class="reset-link">Forgot password?</a>
+            <div id="credentials-panel">
+                <input type="text" id="username" placeholder="Username" autocomplete="username">
+                <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+                <div class="reset-link-container"><a href="/forgot-password" class="reset-link">Forgot password?</a></div>
+                <button id="login-button" onclick="handleLogin()">Login</button>
+                <a href="/register" class="secondary-link">Need an account? Register</a>
+                <a href="/" class="back-link">Back to List</a>
             </div>
-            <button onclick="handleLogin()">Login</button>
-            <a href="/register" class="secondary-link">Need an account? Register</a>
-            <a href="/" class="back-link">Back to List</a>
         </div>
     </main>
+
+    <div id="two-factor-overlay" class="two-factor-overlay hidden" aria-hidden="true">
+        <div class="two-factor-modal" role="dialog" aria-modal="true" aria-labelledby="two-factor-title">
+            <button type="button" class="two-factor-close" onclick="cancelTwoFactor()" aria-label="Close">&times;</button>
+            <h2 id="two-factor-title">Authentication</h2>
+            <div id="two-factor-message" class="two-factor-message"></div>
+
+            <div id="two-factor-method-step" class="hidden">
+                <p class="two-factor-help">Choose how you want to verify this login.</p>
+                <div class="two-factor-choice">
+                    <button type="button" id="two-factor-use-app" onclick="selectTwoFactorMethod('app')">Use authenticator app</button>
+                    <button type="button" id="two-factor-use-email" onclick="selectTwoFactorMethod('email')">Use email</button>
+                </div>
+            </div>
+
+            <div id="two-factor-code-step" class="hidden">
+                <p id="two-factor-help" class="two-factor-help"></p>
+                <input type="text" id="two-factor-code" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="6-digit code">
+                <div class="two-factor-actions">
+                    <button id="two-factor-verify-button" onclick="verifyTwoFactor()">Verify</button>
+                    <button id="two-factor-resend-button" class="two-factor-secondary hidden" onclick="resendTwoFactor()">Resend email code</button>
+                    <div class="two-factor-nav-row">
+                        <button id="two-factor-change-method" class="two-factor-back hidden" onclick="showMethodChoice()">Use a different method</button>
+                        <button class="two-factor-back" onclick="cancelTwoFactor()">Cancel login</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/nav.js"></script>
     <script>
         const msgDiv = document.getElementById('auth-message');
+        let activeTwoFactorMethod = null;
+        let availableTwoFactorMethods = [];
+
+        function setAuthMessage(text, isError = false) {
+            msgDiv.innerText = text || '';
+            msgDiv.style.color = isError ? '#ff4444' : '#00e676';
+        }
+        function setTwoFactorMessage(text, isError = false) {
+            const el = document.getElementById('two-factor-message');
+            el.innerText = text || '';
+            el.style.color = isError ? '#ff4444' : '#00e676';
+        }
+        function setButtonBusy(button, busy, busyText, idleText) {
+            if (!button) return;
+            button.disabled = busy;
+            button.innerText = busy ? busyText : idleText;
+        }
+        function openTwoFactorOverlay() {
+            const overlay = document.getElementById('two-factor-overlay');
+            overlay.classList.remove('hidden');
+            overlay.setAttribute('aria-hidden', 'false');
+        }
+        function closeTwoFactorOverlay() {
+            const overlay = document.getElementById('two-factor-overlay');
+            overlay.classList.add('hidden');
+            overlay.setAttribute('aria-hidden', 'true');
+        }
+        function showMethodChoice() {
+            activeTwoFactorMethod = null;
+            document.getElementById('two-factor-method-step').classList.remove('hidden');
+            document.getElementById('two-factor-code-step').classList.add('hidden');
+            document.getElementById('two-factor-use-app').classList.toggle('hidden', !availableTwoFactorMethods.includes('app'));
+            document.getElementById('two-factor-use-email').classList.toggle('hidden', !availableTwoFactorMethods.includes('email'));
+            setTwoFactorMessage('');
+        }
+        function showCodeStep(method, message) {
+            activeTwoFactorMethod = method;
+            document.getElementById('two-factor-method-step').classList.add('hidden');
+            document.getElementById('two-factor-code-step').classList.remove('hidden');
+            document.getElementById('two-factor-help').innerText = message || (method === 'email'
+                ? 'Enter the code sent to your email.'
+                : 'Enter the code from your authenticator app.');
+            document.getElementById('two-factor-resend-button').classList.toggle('hidden', method !== 'email');
+            document.getElementById('two-factor-change-method').classList.toggle('hidden', availableTwoFactorMethods.length < 2);
+            const codeInput = document.getElementById('two-factor-code');
+            codeInput.value = '';
+            setTwoFactorMessage('');
+            setTimeout(() => codeInput.focus(), 0);
+        }
+        function showTwoFactor(data) {
+            availableTwoFactorMethods = Array.isArray(data.methods) && data.methods.length
+                ? data.methods
+                : (data.method ? [data.method] : []);
+            openTwoFactorOverlay();
+            if (data.chooseMethod || !data.method) showMethodChoice();
+            else showCodeStep(data.method, data.message);
+        }
+
         async function handleLogin() {
-	    const btn = document.querySelector('button');
+            const btn = document.getElementById('login-button');
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            if (!username || !password) return (msgDiv.innerText = "Fill in all fields", msgDiv.style.color = "#ff4444");
-
-            btn.disabled = true;
-            const originalText = btn.innerText;
-            btn.innerText = "Loading...";
-
+            if (!username || !password) return setAuthMessage('Fill in all fields', true);
+            setButtonBusy(btn, true, 'Loading...', 'Login');
             try {
                 const response = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
-                if (response.status === 429) {
-                    msgDiv.innerText = "Rate limited, try again later!";
-                    msgDiv.style.color = "#ff4444";
-                    btn.disabled = false;
-                    btn.innerText = originalText;
+                const data = await response.json();
+                if (response.status === 429) return setAuthMessage('Rate limited, try again later!', true);
+                if (data.twoFactorRequired) {
+                    setAuthMessage('');
+                    showTwoFactor(data);
                     return;
                 }
-                const data = await response.json();
                 if (response.ok) {
-                    msgDiv.innerText = "Login successful!";
-                    msgDiv.style.color = "#00e676";
-                    setTimeout(() => window.location.href = "/", 1000);
-                } else {
-                    msgDiv.innerText = data.error;
-                    msgDiv.style.color = "#ff4444";
-        	    btn.disabled = false;
-                    btn.innerText = originalText;
-                }
-            } catch (err) { 
-		msgDiv.innerText = "Server error";
-        	btn.disabled = false;
-                btn.innerText = originalText;
+                    setAuthMessage('Login successful!');
+                    setTimeout(() => window.location.href = '/', 700);
+                } else setAuthMessage(data.error || 'Login failed.', true);
+            } catch (_) {
+                setAuthMessage('Server error', true);
+            } finally {
+                setButtonBusy(btn, false, 'Loading...', 'Login');
             }
         }
+
+        async function selectTwoFactorMethod(method) {
+            if (!availableTwoFactorMethods.includes(method)) return;
+            const appBtn = document.getElementById('two-factor-use-app');
+            const emailBtn = document.getElementById('two-factor-use-email');
+            appBtn.disabled = emailBtn.disabled = true;
+            setTwoFactorMessage(method === 'email' ? 'Sending email code...' : 'Preparing authenticator verification...');
+            try {
+                const response = await fetch('/api/login/2fa/select', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ method })
+                });
+                const data = await response.json();
+                if (!response.ok) return setTwoFactorMessage(data.error || 'Could not use that method.', true);
+                showCodeStep(data.method, data.message);
+            } catch (_) {
+                setTwoFactorMessage('Server error', true);
+            } finally {
+                appBtn.disabled = emailBtn.disabled = false;
+            }
+        }
+
+        async function verifyTwoFactor() {
+            const btn = document.getElementById('two-factor-verify-button');
+            const code = document.getElementById('two-factor-code').value.replace(/\D/g, '');
+            if (code.length !== 6) return setTwoFactorMessage('Enter a valid 6-digit code.', true);
+            setButtonBusy(btn, true, 'Verifying...', 'Verify');
+            try {
+                const response = await fetch('/api/login/2fa', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    setTwoFactorMessage('Login successful!');
+                    setTimeout(() => window.location.href = '/', 500);
+                } else setTwoFactorMessage(data.error || 'Incorrect code.', true);
+            } catch (_) {
+                setTwoFactorMessage('Server error', true);
+            } finally {
+                setButtonBusy(btn, false, 'Verifying...', 'Verify');
+            }
+        }
+
+        async function resendTwoFactor() {
+            if (activeTwoFactorMethod !== 'email') return;
+            const btn = document.getElementById('two-factor-resend-button');
+            setButtonBusy(btn, true, 'Sending...', 'Resend email code');
+            try {
+                const response = await fetch('/api/login/2fa/resend', { method: 'POST' });
+                const data = await response.json();
+                setTwoFactorMessage(response.ok ? data.message : (data.error || 'Could not resend code.'), !response.ok);
+            } catch (_) {
+                setTwoFactorMessage('Server error', true);
+            } finally {
+                setButtonBusy(btn, false, 'Sending...', 'Resend email code');
+            }
+        }
+
+        async function cancelTwoFactor() {
+            await fetch('/api/login/2fa/cancel', { method: 'POST' }).catch(() => {});
+            activeTwoFactorMethod = null;
+            availableTwoFactorMethods = [];
+            document.getElementById('two-factor-code').value = '';
+            closeTwoFactorOverlay();
+            setTwoFactorMessage('');
+            document.getElementById('password').focus();
+        }
+
+        document.getElementById('password').addEventListener('keydown', event => { if (event.key === 'Enter') handleLogin(); });
+        document.getElementById('two-factor-code').addEventListener('input', event => { event.target.value = event.target.value.replace(/\D/g, '').slice(0, 6); });
+        document.getElementById('two-factor-code').addEventListener('keydown', event => { if (event.key === 'Enter') verifyTwoFactor(); });
+        document.getElementById('two-factor-overlay').addEventListener('click', event => { if (event.target.id === 'two-factor-overlay') cancelTwoFactor(); });
     </script>
 </body>
 </html>

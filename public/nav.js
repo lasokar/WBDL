@@ -205,8 +205,19 @@ async function openTimeMachineFromQuery() {
 }
 
 
-function renderTimeMachineNavbar(navContainer, date) {
-    navContainer.innerHTML = `
+function getStaffTwoFactorBanner(user) {
+    const isStaff = user?.loggedIn && ['moderator', 'admin', 'owner'].includes(String(user.role || '').toLowerCase());
+    if (!isStaff || user.twoFactorEnabled) return '';
+    return `
+        <div style="display:block;width:100%;box-sizing:border-box;padding:10px 18px;background:#f2c94c;color:#211b00;text-align:center;font-weight:900;border-bottom:1px solid rgba(0,0,0,0.22);">
+            You must enable two-factor authentication before using moderator actions.
+            <a href="/account-settings#security" style="color:#00aecd;text-decoration:underline;text-underline-offset:2px;font-weight:900;">Click here to enable it.</a>
+        </div>
+    `;
+}
+
+function renderTimeMachineNavbar(navContainer, date, user = null) {
+    navContainer.innerHTML = `${getStaffTwoFactorBanner(user)}
         <style>
             #global-nav button {
                 width: auto !important;
@@ -284,12 +295,12 @@ async function loadNavbar() {
         return;
     }
 
+    const user = await res.json();
+
     if (activeTimeMachineDate) {
-        renderTimeMachineNavbar(navContainer, activeTimeMachineDate);
+        renderTimeMachineNavbar(navContainer, activeTimeMachineDate, user);
         return;
     }
-
-    const user = await res.json();
 
     const isImpossibleList = window.location.hostname.includes('impossible');
 
@@ -350,7 +361,7 @@ async function loadNavbar() {
         `;
     }
 
-    navContainer.innerHTML = `
+    navContainer.innerHTML = `${getStaffTwoFactorBanner(user)}
         <style>
             #global-nav button {
                 width: auto !important;

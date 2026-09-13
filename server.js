@@ -9,7 +9,7 @@ const net = require('net');
 const http = require('http');
 const https = require('https');
 const axios = require('axios');
-const { randomBytes } = require('crypto');
+const { randomBytes, randomInt, createHash, createHmac, createCipheriv, createDecipheriv, timingSafeEqual } = require('crypto');
 const ffmpeg = require('fluent-ffmpeg');
 let bundledFfmpegPath = null;
 try { bundledFfmpegPath = require('ffmpeg-static'); } catch (_) {}
@@ -35,6 +35,7 @@ app.use((req, res, next) => {
 });
 
 const { Resend } = require('resend');
+const QRCode = require('qrcode');
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const pool = new Pool({
@@ -42,6 +43,188 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+
+const TWO_FACTOR_CODE_TTL_MS = 10 * 60 * 1000;
+const TWO_FACTOR_RESEND_COOLDOWN_MS = 45 * 1000;
+const TWO_FACTOR_MAX_ATTEMPTS = 8;
+const TWO_FACTOR_TOTP_PERIOD_SECONDS = 30;
+const TWO_FACTOR_TOTP_DIGITS = 6;
+
+function normalizeTwoFactorCode(value) {
+    return String(value || '').replace(/\s+/g, '');
+}
+
+function generateEmailTwoFactorCode() {
+    return String(randomInt(0, 1000000)).padStart(6, '0');
+}
+
+function hashTwoFactorCode(code, userId, purpose) {
+    const pepper = process.env.SESSION_SECRET || 'wbdl-two-factor';
+    return createHash('sha256')
+        .update(`${normalizeTwoFactorCode(code)}:${Number(userId)}:${String(purpose || '')}:${pepper}`)
+        .digest('hex');
+}
+
+function safeEqualText(a, b) {
+    const left = Buffer.from(String(a || ''), 'utf8');
+    const right = Buffer.from(String(b || ''), 'utf8');
+    return left.length === right.length && timingSafeEqual(left, right);
+}
+
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function base32Encode(buffer) {
+    let bits = 0;
+    let value = 0;
+    let output = '';
+    for (const byte of buffer) {
+        value = (value << 8) | byte;
+        bits += 8;
+        while (bits >= 5) {
+            output += BASE32_ALPHABET[(value >>> (bits - 5)) & 31];
+            bits -= 5;
+        }
+    }
+    if (bits > 0) output += BASE32_ALPHABET[(value << (5 - bits)) & 31];
+    return output;
+}
+
+function base32Decode(value) {
+    const clean = String(value || '').toUpperCase().replace(/[^A-Z2-7]/g, '');
+    let bits = 0;
+    let accumulator = 0;
+    const bytes = [];
+    for (const char of clean) {
+        const index = BASE32_ALPHABET.indexOf(char);
+        if (index < 0) throw new Error('Invalid authenticator secret.');
+        accumulator = (accumulator << 5) | index;
+        bits += 5;
+        if (bits >= 8) {
+            bytes.push((accumulator >>> (bits - 8)) & 0xff);
+            bits -= 8;
+        }
+    }
+    return Buffer.from(bytes);
+}
+
+function makeTotpSecret() {
+    return base32Encode(randomBytes(20));
+}
+
+function generateTotpCode(secret, counter) {
+    const key = base32Decode(secret);
+    const counterBuffer = Buffer.alloc(8);
+    counterBuffer.writeBigUInt64BE(BigInt(counter));
+    const digest = createHmac('sha1', key).update(counterBuffer).digest();
+    const offset = digest[digest.length - 1] & 0x0f;
+    const binary = ((digest[offset] & 0x7f) << 24)
+        | ((digest[offset + 1] & 0xff) << 16)
+        | ((digest[offset + 2] & 0xff) << 8)
+        | (digest[offset + 3] & 0xff);
+    return String(binary % (10 ** TWO_FACTOR_TOTP_DIGITS)).padStart(TWO_FACTOR_TOTP_DIGITS, '0');
+}
+
+function verifyTotpCode(secret, candidate, nowMs = Date.now()) {
+    const code = normalizeTwoFactorCode(candidate);
+    if (!/^\d{6}$/.test(code)) return false;
+    const counter = Math.floor(nowMs / 1000 / TWO_FACTOR_TOTP_PERIOD_SECONDS);
+    for (const offset of [-1, 0, 1]) {
+        const expected = generateTotpCode(secret, counter + offset);
+        if (safeEqualText(expected, code)) return true;
+    }
+    return false;
+}
+
+function getTwoFactorEncryptionKey() {
+    const source = process.env.TWO_FACTOR_ENCRYPTION_KEY || process.env.SESSION_SECRET;
+    if (!source) throw new Error('TWO_FACTOR_ENCRYPTION_KEY or SESSION_SECRET must be configured.');
+    return createHash('sha256').update(String(source)).digest();
+}
+
+function encryptTwoFactorSecret(secret) {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', getTwoFactorEncryptionKey(), iv);
+    const ciphertext = Buffer.concat([cipher.update(String(secret), 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return `v1:${iv.toString('base64')}:${tag.toString('base64')}:${ciphertext.toString('base64')}`;
+}
+
+function decryptTwoFactorSecret(value) {
+    const parts = String(value || '').split(':');
+    if (parts.length !== 4 || parts[0] !== 'v1') throw new Error('Invalid stored authenticator secret.');
+    const iv = Buffer.from(parts[1], 'base64');
+    const tag = Buffer.from(parts[2], 'base64');
+    const ciphertext = Buffer.from(parts[3], 'base64');
+    const decipher = createDecipheriv('aes-256-gcm', getTwoFactorEncryptionKey(), iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+}
+
+function maskEmailAddress(email) {
+    const [local = '', domain = ''] = String(email || '').split('@');
+    if (!local || !domain) return 'your email address';
+    const visible = local.slice(0, Math.min(2, local.length));
+    return `${visible}${'*'.repeat(Math.max(3, local.length - visible.length))}@${domain}`;
+}
+
+function clearTwoFactorLoginChallenge(req) {
+    if (req.session) req.session.twoFactorLogin = null;
+}
+
+function clearTwoFactorSettingsChallenge(req) {
+    if (req.session) req.session.twoFactorSettings = null;
+}
+
+function getStoredTwoFactorMethods(value) {
+    const method = String(value || '').toLowerCase();
+    if (method === 'both') return ['email', 'app'];
+    if (method === 'email' || method === 'app') return [method];
+    return [];
+}
+
+function hasStoredTwoFactorMethod(value, method) {
+    return getStoredTwoFactorMethods(value).includes(String(method || '').toLowerCase());
+}
+
+function hasAnyStoredTwoFactorMethod(value) {
+    return getStoredTwoFactorMethods(value).length > 0;
+}
+
+async function sendTwoFactorCodeEmail(targetEmail, username, code, context = 'login') {
+    const title = context === 'setup'
+        ? 'Confirm 2FA setup'
+        : context === 'disable'
+            ? 'Confirm 2FA change'
+            : context === 'account-action'
+                ? 'Confirm your WBDL account action'
+                : 'Your WBDL login code';
+    const description = context === 'setup'
+        ? 'Use this code to finish enabling 2FA on your WBDL account.'
+        : context === 'disable'
+            ? 'Use this code to confirm this 2FA change on your WBDL account.'
+            : context === 'account-action'
+                ? 'Use this code to confirm the sensitive account change you just requested.'
+                : 'Use this code to finish signing in to your WBDL account.';
+
+    await resend.emails.send({
+        from: 'Web Browser Demonlist <support@webdemonlist.org>',
+        to: targetEmail,
+        subject: title,
+        html: `
+        <div style="font-family: Nunito, Arial, sans-serif; background-color: #181b1e; color: #f2f3f5; padding: 40px; border-radius: 12px; max-width: 600px; margin: auto; border: 1px solid #2a2f36;">
+            <h1 style="font-family: Comfortaa, Arial, sans-serif; color: #00e676; text-align: center; margin: 0 0 22px; font-size: 26px; line-height: 1.2;">${title}</h1>
+            <p style="text-align: center; color: #8b929c; font-size: 16px; line-height: 1.6; margin: 0;">Hello ${username}, ${description}</p>
+            <div style="font-family: monospace; letter-spacing: 8px; font-size: 34px; font-weight: 800; text-align: center; margin: 30px 0; color: #f2f3f5;">${code}</div>
+            <p style="font-size: 12px; color: #5a616b; text-align: center; margin: 0;">This code expires in 10 minutes. If you did not request it, you can ignore this email.</p>
+        </div>`
+    });
+}
+
+function buildAuthenticatorUri(username, secret) {
+    const issuer = 'WBDL';
+    const label = `WBDL:${String(username || 'user')}`;
+    return `otpauth://totp/${encodeURIComponent(label)}?secret=${encodeURIComponent(secret)}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+}
 
 const BANNER_PREVIEW_MAX_BYTES = 200 * 1024 * 1024;
 const BANNER_PREVIEW_DOWNLOAD_TIMEOUT_MS = 25000;
@@ -2030,31 +2213,259 @@ app.get('/api/verify', async (req, res) => {
 
 app.post('/api/login', async (req, res) => {
     const { username, password } = req.body;
-    const userResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [username]);
-    
-    if (userResult.rows.length > 0) {
+    try {
+        const userResult = await pool.query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [username]);
+        if (!userResult.rows.length) {
+            clearTwoFactorLoginChallenge(req);
+            return res.status(401).json({ error: "Invalid credentials" });
+        }
+
         const user = userResult.rows[0];
         const validPassword = await bcrypt.compare(password, user.password_hash);
-        if (validPassword) {
-            if (user.account_disabled && !isStaffRole(user.role)) {
-                return res.status(403).json({
-                    error: "This account has been disabled. \n Reason: " + (user.account_disabled_reason || "Banned"),
-                    accountDisabled: true,
-                });
-            }
-            req.session.userId = user.id;
-            req.session.username = user.username;
-            return res.json({ message: "Logged in!", username: user.username });
+        if (!validPassword) {
+            clearTwoFactorLoginChallenge(req);
+            return res.status(401).json({ error: "Invalid credentials" });
         }
+
+        if (user.account_disabled && !isStaffRole(user.role)) {
+            clearTwoFactorLoginChallenge(req);
+            return res.status(403).json({
+                error: "This account has been disabled. \n Reason: " + (user.account_disabled_reason || "Banned"),
+                accountDisabled: true,
+            });
+        }
+
+        const methods = getStoredTwoFactorMethods(user.two_factor_method);
+        if (methods.length) {
+            if (methods.includes('email') && !user.email) {
+                return res.status(500).json({ error: '2FA is not configured correctly for email.' });
+            }
+            if (methods.includes('app') && !user.two_factor_secret) {
+                return res.status(500).json({ error: '2FA is not configured correctly for your authenticator app.' });
+            }
+
+            let challenge = {
+                userId: Number(user.id),
+                username: user.username,
+                availableMethods: methods,
+                method: null,
+                expiresAt: Date.now() + TWO_FACTOR_CODE_TTL_MS,
+                attempts: 0,
+                lastSentAt: 0,
+            };
+
+            if (methods.length === 1) {
+                const method = methods[0];
+                challenge.method = method;
+                if (method === 'email') {
+                    const code = generateEmailTwoFactorCode();
+                    await sendTwoFactorCodeEmail(user.email, user.username, code, 'login');
+                    challenge.codeHash = hashTwoFactorCode(code, user.id, 'login');
+                    challenge.lastSentAt = Date.now();
+                }
+            }
+
+            req.session.userId = null;
+            req.session.username = null;
+            req.session.twoFactorLogin = challenge;
+            return res.status(202).json({
+                twoFactorRequired: true,
+                chooseMethod: methods.length > 1,
+                methods,
+                method: challenge.method,
+                message: challenge.method === 'email'
+                    ? `A 6-digit code was sent to ${maskEmailAddress(user.email)}.`
+                    : challenge.method === 'app'
+                        ? 'Enter the 6-digit code from your authenticator app.'
+                        : 'Choose how you want to verify your login.',
+            });
+        }
+
+        clearTwoFactorLoginChallenge(req);
+        req.session.userId = user.id;
+        req.session.username = user.username;
+        return res.json({ message: "Logged in!", username: user.username });
+    } catch (err) {
+        console.error('Login error:', err);
+        return res.status(500).json({ error: 'Could not complete login.' });
     }
-    res.status(401).json({ error: "Invalid credentials" });
+});
+
+app.post('/api/login/2fa/select', async (req, res) => {
+    const challenge = req.session?.twoFactorLogin;
+    if (!challenge?.userId || challenge.expiresAt <= Date.now()) {
+        clearTwoFactorLoginChallenge(req);
+        return res.status(401).json({ error: 'Your authentication session expired. Please sign in again.' });
+    }
+
+    const method = String(req.body?.method || '').toLowerCase();
+    const availableMethods = Array.isArray(challenge.availableMethods) ? challenge.availableMethods : [];
+    if (!['email', 'app'].includes(method) || !availableMethods.includes(method)) {
+        return res.status(400).json({ error: 'That 2FA method is not available for this account.' });
+    }
+
+    try {
+        const result = await pool.query(`
+            SELECT id, username, email, two_factor_method, two_factor_secret
+            FROM users WHERE id = $1
+        `, [challenge.userId]);
+        const user = result.rows[0];
+        if (!user || !hasStoredTwoFactorMethod(user.two_factor_method, method)) {
+            clearTwoFactorLoginChallenge(req);
+            return res.status(401).json({ error: 'Your 2FA settings changed. Please sign in again.' });
+        }
+
+        const nextChallenge = {
+            ...challenge,
+            availableMethods: getStoredTwoFactorMethods(user.two_factor_method),
+            method,
+            expiresAt: Date.now() + TWO_FACTOR_CODE_TTL_MS,
+            attempts: 0,
+            lastSentAt: Number(challenge.lastSentAt || 0),
+            codeHash: null,
+        };
+
+        let message;
+        if (method === 'email') {
+            if (!user.email) return res.status(500).json({ error: 'This account has no email address available for 2FA.' });
+            const elapsed = Date.now() - Number(challenge.lastSentAt || 0);
+            if (challenge.lastSentAt && elapsed < TWO_FACTOR_RESEND_COOLDOWN_MS) {
+                return res.status(429).json({ error: `Please wait ${Math.ceil((TWO_FACTOR_RESEND_COOLDOWN_MS - elapsed) / 1000)} seconds before requesting another code.` });
+            }
+            const code = generateEmailTwoFactorCode();
+            await sendTwoFactorCodeEmail(user.email, user.username, code, 'login');
+            nextChallenge.codeHash = hashTwoFactorCode(code, user.id, 'login');
+            nextChallenge.lastSentAt = Date.now();
+            message = `A 6-digit code was sent to ${maskEmailAddress(user.email)}.`;
+        } else {
+            if (!user.two_factor_secret) return res.status(500).json({ error: '2FA is not configured correctly for your authenticator app.' });
+            message = 'Enter the 6-digit code from your authenticator app.';
+        }
+
+        req.session.twoFactorLogin = nextChallenge;
+        return res.json({ method, message });
+    } catch (err) {
+        console.error('Two-factor method selection error:', err);
+        return res.status(500).json({ error: 'Could not start that 2FA method.' });
+    }
+});
+
+app.post('/api/login/2fa', async (req, res) => {
+    const challenge = req.session?.twoFactorLogin;
+    if (!challenge?.userId || challenge.expiresAt <= Date.now()) {
+        clearTwoFactorLoginChallenge(req);
+        return res.status(401).json({ error: 'Your authentication session expired. Please sign in again.' });
+    }
+    if (!['email', 'app'].includes(String(challenge.method || '').toLowerCase())) {
+        return res.status(400).json({ error: 'Choose an authentication method first.' });
+    }
+
+    const code = normalizeTwoFactorCode(req.body.code);
+    if (!/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: 'Enter a valid 6-digit code.' });
+    }
+
+    try {
+        const result = await pool.query(`
+            SELECT id, username, role, email, account_disabled, account_disabled_reason,
+                   two_factor_method, two_factor_secret
+            FROM users WHERE id = $1
+        `, [challenge.userId]);
+        const user = result.rows[0];
+        if (!user) {
+            clearTwoFactorLoginChallenge(req);
+            return res.status(401).json({ error: 'Account no longer exists.' });
+        }
+        if (user.account_disabled && !isStaffRole(user.role)) {
+            clearTwoFactorLoginChallenge(req);
+            return res.status(403).json({
+                error: "This account has been disabled. \n Reason: " + (user.account_disabled_reason || "Banned"),
+                accountDisabled: true,
+            });
+        }
+
+        const method = String(challenge.method || '').toLowerCase();
+        if (!hasStoredTwoFactorMethod(user.two_factor_method, method)) {
+            clearTwoFactorLoginChallenge(req);
+            return res.status(401).json({ error: 'Your 2FA settings changed. Please sign in again.' });
+        }
+
+        let valid = false;
+        if (method === 'email') {
+            const expectedHash = hashTwoFactorCode(code, user.id, 'login');
+            valid = safeEqualText(expectedHash, challenge.codeHash);
+        } else if (method === 'app') {
+            try {
+                valid = verifyTotpCode(decryptTwoFactorSecret(user.two_factor_secret), code);
+            } catch (err) {
+                console.error('Authenticator verification error:', err);
+            }
+        }
+
+        if (!valid) {
+            const attempts = Number(challenge.attempts || 0) + 1;
+            if (attempts >= TWO_FACTOR_MAX_ATTEMPTS) {
+                clearTwoFactorLoginChallenge(req);
+                return res.status(401).json({ error: 'Too many incorrect codes. Please sign in again.' });
+            }
+            req.session.twoFactorLogin = { ...challenge, attempts };
+            return res.status(401).json({ error: 'Incorrect authentication code.' });
+        }
+
+        clearTwoFactorLoginChallenge(req);
+        req.session.userId = user.id;
+        req.session.username = user.username;
+        return res.json({ message: 'Logged in!', username: user.username });
+    } catch (err) {
+        console.error('Two-factor login error:', err);
+        return res.status(500).json({ error: 'Could not verify the authentication code.' });
+    }
+});
+
+app.post('/api/login/2fa/resend', async (req, res) => {
+    const challenge = req.session?.twoFactorLogin;
+    if (!challenge?.userId || challenge.method !== 'email' || challenge.expiresAt <= Date.now()) {
+        clearTwoFactorLoginChallenge(req);
+        return res.status(401).json({ error: 'Your authentication session expired. Please sign in again.' });
+    }
+    const elapsed = Date.now() - Number(challenge.lastSentAt || 0);
+    if (elapsed < TWO_FACTOR_RESEND_COOLDOWN_MS) {
+        return res.status(429).json({ error: `Please wait ${Math.ceil((TWO_FACTOR_RESEND_COOLDOWN_MS - elapsed) / 1000)} seconds before requesting another code.` });
+    }
+
+    try {
+        const result = await pool.query('SELECT id, username, email, two_factor_method FROM users WHERE id = $1', [challenge.userId]);
+        const user = result.rows[0];
+        if (!user || !hasStoredTwoFactorMethod(user.two_factor_method, 'email') || !user.email) {
+            clearTwoFactorLoginChallenge(req);
+            return res.status(401).json({ error: '2FA by email is no longer available for this account.' });
+        }
+        const code = generateEmailTwoFactorCode();
+        await sendTwoFactorCodeEmail(user.email, user.username, code, 'login');
+        req.session.twoFactorLogin = {
+            ...challenge,
+            codeHash: hashTwoFactorCode(code, user.id, 'login'),
+            expiresAt: Date.now() + TWO_FACTOR_CODE_TTL_MS,
+            lastSentAt: Date.now(),
+            attempts: 0,
+        };
+        return res.json({ message: `A new code was sent to ${maskEmailAddress(user.email)}.` });
+    } catch (err) {
+        console.error('Two-factor resend error:', err);
+        return res.status(500).json({ error: 'Could not send another code.' });
+    }
+});
+
+app.post('/api/login/2fa/cancel', (req, res) => {
+    clearTwoFactorLoginChallenge(req);
+    res.json({ message: 'Authentication cancelled.' });
 });
 
 app.get('/api/me', async (req, res) => {
     if (req.session.userId) {
         try {
             const user = await pool.query(
-                'SELECT id, username, role, display_name, icon_type, icon_id, color1, color2, glow, leaderboard_banned, account_disabled FROM users WHERE id = $1', 
+                'SELECT id, username, role, display_name, icon_type, icon_id, color1, color2, glow, leaderboard_banned, account_disabled, two_factor_method FROM users WHERE id = $1', 
                 [req.session.userId]
             );
 
@@ -2069,6 +2480,7 @@ app.get('/api/me', async (req, res) => {
                     clanName,
                     leaderboardBanned: Boolean(userData.leaderboard_banned),
                     accountDisabled: Boolean(userData.account_disabled),
+                    twoFactorEnabled: hasAnyStoredTwoFactorMethod(userData.two_factor_method),
                     displayName: formatClanDisplayName(userData.display_name || userData.username, clanName),
                     icon: {
                         type: userData.icon_type || 'cube',
@@ -2435,23 +2847,44 @@ app.delete('/api/records/pending/:recordId', async (req, res) => {
     }
 });
 
-const isOwner = async (req, res, next) => {
-    if (!req.session.userId) return res.status(401).send("Not logged in");
+function isReadOnlyStaffRequest(req) {
+    return ['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase());
+}
+
+async function requireStaffAccess(req, res, next, allowedRoles, errorLabel) {
+    if (!req.session.userId) return res.status(401).send('Not logged in');
 
     try {
-        const user = await pool.query('SELECT role FROM users WHERE id = $1', [req.session.userId]);
-        const userRole = user.rows[0]?.role;
+        const user = await pool.query(
+            'SELECT role, two_factor_method FROM users WHERE id = $1',
+            [req.session.userId]
+        );
+        const row = user.rows[0];
+        const userRole = String(row?.role || '').toLowerCase();
 
-        if (userRole === 'owner') {
-            next();
-        } else {
-            res.status(403).send("Access Denied :)");
+        if (!allowedRoles.includes(userRole)) {
+            return res.status(403).send('Access Denied :)');
         }
+
+        const twoFactorEnabled = hasAnyStoredTwoFactorMethod(row?.two_factor_method);
+        if (!isReadOnlyStaffRequest(req) && !twoFactorEnabled) {
+            return res.status(403).json({
+                error: 'Staff must enable two-factor authentication before using moderator actions.',
+                twoFactorRequired: true,
+                securityUrl: '/account-settings#security',
+            });
+        }
+
+        next();
     } catch (err) {
-        console.error("Auth middleware error:", err);
-        res.status(500).send("Internal Server Error");
+        console.error(`${errorLabel} middleware error:`, err);
+        res.status(500).send('Internal Server Error');
     }
-};
+}
+
+const isOwner = (req, res, next) => requireStaffAccess(req, res, next, ['owner'], 'Owner auth');
+const isAdmin = (req, res, next) => requireStaffAccess(req, res, next, ['admin', 'owner'], 'Admin auth');
+const isMod = (req, res, next) => requireStaffAccess(req, res, next, ['moderator', 'admin', 'owner'], 'Mod auth');
 
 app.post('/api/owner/users/:userId/badges', isOwner, async (req, res) => {
     const targetUserId = parseInt(req.params.userId, 10);
@@ -2523,44 +2956,6 @@ app.post('/api/owner/users/:userId/badges', isOwner, async (req, res) => {
         res.status(500).json({ error: 'Could not add badge.' });
     }
 });
-
-const isAdmin = async (req, res, next) => {
-    if (!req.session.userId) return res.status(401).send("Not logged in");
-
-    try {
-        const user = await pool.query('SELECT role FROM users WHERE id = $1', [req.session.userId]);
-        const userRole = user.rows[0]?.role;
-
-        if (userRole === 'admin' || userRole === 'owner') {
-            next();
-        } else {
-            res.status(403).send("Access Denied :)");
-        }
-    } catch (err) {
-        console.error("Auth middleware error:", err);
-        res.status(500).send("Internal Server Error");
-    }
-};
-
-const isMod = async (req, res, next) => {
-    if (!req.session.userId) return res.status(401).send("Not logged in");
-
-    try {
-        const user = await pool.query('SELECT role FROM users WHERE id = $1', [req.session.userId]);
-        const userRole = user.rows[0]?.role;
-
-        const allowedRoles = ['moderator', 'admin', 'owner'];
-
-        if (allowedRoles.includes(userRole)) {
-            next();
-        } else {
-            res.status(403).send("Access Denied :)");
-        }
-    } catch (err) {
-        console.error("Mod middleware error:", err);
-        res.status(500).send("Internal Server Error");
-    }
-};
 
 app.get('/api/moderation/users/:userId', isMod, async (req, res) => {
     const targetUserId = parseInt(req.params.userId, 10);
@@ -2825,7 +3220,10 @@ app.post('/api/owner/users/:userId/reset', isOwner, async (req, res) => {
                 submission_notifications = FALSE,
                 submission_discord_ping = FALSE,
                 verification_notifications = FALSE,
-                verification_discord_ping = FALSE
+                verification_discord_ping = FALSE,
+                two_factor_method = NULL,
+                two_factor_secret = NULL,
+                two_factor_enabled_at = NULL
             WHERE id = $2
         `, [newUsername, targetUserId]);
 
@@ -4759,6 +5157,434 @@ app.get('/api/demons/:id', async (req, res) => {
 });
 
 
+
+app.get('/api/settings/2fa', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    try {
+        const result = await pool.query(`
+            SELECT email, two_factor_method, two_factor_enabled_at
+            FROM users WHERE id = $1
+        `, [req.session.userId]);
+        const user = result.rows[0];
+        if (!user) return res.status(404).json({ error: 'User not found.' });
+        const methods = getStoredTwoFactorMethods(user.two_factor_method);
+        const method = methods.length === 2 ? 'both' : (methods[0] || null);
+        res.json({
+            enabled: methods.length > 0,
+            method,
+            methods,
+            emailEnabled: methods.includes('email'),
+            appEnabled: methods.includes('app'),
+            email: maskEmailAddress(user.email),
+            enabledAt: user.two_factor_enabled_at || null,
+        });
+    } catch (err) {
+        console.error('2FA settings status error:', err);
+        res.status(500).json({ error: 'Could not load two-factor settings.' });
+    }
+});
+
+app.post('/api/settings/2fa/email/start', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const currentPassword = String(req.body.currentPassword || '');
+    if (!currentPassword) return res.status(400).json({ error: 'Enter your current password.' });
+
+    try {
+        const result = await pool.query('SELECT id, username, email, password_hash FROM users WHERE id = $1', [req.session.userId]);
+        const user = result.rows[0];
+        if (!user) return res.status(404).json({ error: 'User not found.' });
+        if (!await bcrypt.compare(currentPassword, user.password_hash)) {
+            return res.status(400).json({ error: 'Current password incorrect.' });
+        }
+        if (!user.email) return res.status(400).json({ error: 'Your account does not have an email address.' });
+
+        const code = generateEmailTwoFactorCode();
+        await sendTwoFactorCodeEmail(user.email, user.username, code, 'setup');
+        req.session.twoFactorSettings = {
+            purpose: 'enable-email',
+            userId: Number(user.id),
+            codeHash: hashTwoFactorCode(code, user.id, 'enable-email'),
+            expiresAt: Date.now() + TWO_FACTOR_CODE_TTL_MS,
+            attempts: 0,
+        };
+        res.json({ message: `A verification code was sent to ${maskEmailAddress(user.email)}.`, method: 'email' });
+    } catch (err) {
+        console.error('2FA email setup error:', err);
+        res.status(500).json({ error: 'Could not send the 2FA setup code.' });
+    }
+});
+
+app.post('/api/settings/2fa/email/confirm', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const challenge = req.session.twoFactorSettings;
+    if (!challenge || challenge.purpose !== 'enable-email' || Number(challenge.userId) !== Number(req.session.userId) || challenge.expiresAt <= Date.now()) {
+        clearTwoFactorSettingsChallenge(req);
+        return res.status(400).json({ error: 'The setup code expired. Start 2FA setup again.' });
+    }
+    const code = normalizeTwoFactorCode(req.body.code);
+    if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'Enter a valid 6-digit code.' });
+
+    const valid = safeEqualText(hashTwoFactorCode(code, req.session.userId, 'enable-email'), challenge.codeHash);
+    if (!valid) {
+        const attempts = Number(challenge.attempts || 0) + 1;
+        if (attempts >= TWO_FACTOR_MAX_ATTEMPTS) {
+            clearTwoFactorSettingsChallenge(req);
+            return res.status(400).json({ error: 'Too many incorrect codes. Start setup again.' });
+        }
+        req.session.twoFactorSettings = { ...challenge, attempts };
+        return res.status(400).json({ error: 'Incorrect verification code.' });
+    }
+
+    try {
+        await pool.query(`
+            UPDATE users
+            SET two_factor_method = CASE
+                    WHEN two_factor_method IN ('app', 'both') THEN 'both'
+                    ELSE 'email'
+                END,
+                two_factor_enabled_at = COALESCE(two_factor_enabled_at, NOW())
+            WHERE id = $1
+        `, [req.session.userId]);
+        clearTwoFactorSettingsChallenge(req);
+        res.json({ message: '2FA is now enabled with email.' });
+    } catch (err) {
+        console.error('2FA email confirm error:', err);
+        res.status(500).json({ error: 'Could not enable 2FA with email.' });
+    }
+});
+
+app.post('/api/settings/2fa/app/start', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const currentPassword = String(req.body.currentPassword || '');
+    if (!currentPassword) return res.status(400).json({ error: 'Enter your current password.' });
+
+    try {
+        const result = await pool.query('SELECT id, username, password_hash FROM users WHERE id = $1', [req.session.userId]);
+        const user = result.rows[0];
+        if (!user) return res.status(404).json({ error: 'User not found.' });
+        if (!await bcrypt.compare(currentPassword, user.password_hash)) {
+            return res.status(400).json({ error: 'Current password incorrect.' });
+        }
+
+        const secret = makeTotpSecret();
+        const uri = buildAuthenticatorUri(user.username, secret);
+        const qrDataUrl = await QRCode.toDataURL(uri, { width: 220, margin: 1, errorCorrectionLevel: 'M' });
+        req.session.twoFactorSettings = {
+            purpose: 'enable-app',
+            userId: Number(user.id),
+            secret,
+            expiresAt: Date.now() + TWO_FACTOR_CODE_TTL_MS,
+            attempts: 0,
+        };
+        res.json({
+            message: 'Scan the QR code, then enter the current 6-digit code from your authenticator app.',
+            method: 'app',
+            qrDataUrl,
+            secret,
+        });
+    } catch (err) {
+        console.error('2FA authenticator setup error:', err);
+        res.status(500).json({ error: 'Could not start authenticator setup.' });
+    }
+});
+
+app.post('/api/settings/2fa/app/confirm', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const challenge = req.session.twoFactorSettings;
+    if (!challenge || challenge.purpose !== 'enable-app' || Number(challenge.userId) !== Number(req.session.userId) || challenge.expiresAt <= Date.now()) {
+        clearTwoFactorSettingsChallenge(req);
+        return res.status(400).json({ error: 'Authenticator setup expired. Start setup again.' });
+    }
+
+    const code = normalizeTwoFactorCode(req.body.code);
+    if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'Enter a valid 6-digit code.' });
+    if (!verifyTotpCode(challenge.secret, code)) {
+        const attempts = Number(challenge.attempts || 0) + 1;
+        if (attempts >= TWO_FACTOR_MAX_ATTEMPTS) {
+            clearTwoFactorSettingsChallenge(req);
+            return res.status(400).json({ error: 'Too many incorrect codes. Start setup again.' });
+        }
+        req.session.twoFactorSettings = { ...challenge, attempts };
+        return res.status(400).json({ error: 'That authenticator code is incorrect.' });
+    }
+
+    try {
+        const encryptedSecret = encryptTwoFactorSecret(challenge.secret);
+        await pool.query(`
+            UPDATE users
+            SET two_factor_method = CASE
+                    WHEN two_factor_method IN ('email', 'both') THEN 'both'
+                    ELSE 'app'
+                END,
+                two_factor_secret = $1,
+                two_factor_enabled_at = COALESCE(two_factor_enabled_at, NOW())
+            WHERE id = $2
+        `, [encryptedSecret, req.session.userId]);
+        clearTwoFactorSettingsChallenge(req);
+        res.json({ message: '2FA is now enabled with your authenticator app.' });
+    } catch (err) {
+        console.error('2FA authenticator confirm error:', err);
+        res.status(500).json({ error: 'Could not enable 2FA with your authenticator app.' });
+    }
+});
+
+app.post('/api/settings/2fa/disable/start', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const currentPassword = String(req.body.currentPassword || '');
+    const targetMethod = String(req.body.method || 'all').toLowerCase();
+    if (!currentPassword) return res.status(400).json({ error: 'Enter your current password.' });
+    if (!['all', 'email', 'app'].includes(targetMethod)) {
+        return res.status(400).json({ error: 'Invalid 2FA method.' });
+    }
+
+    try {
+        const result = await pool.query(`
+            SELECT id, username, email, password_hash, two_factor_method, two_factor_secret
+            FROM users WHERE id = $1
+        `, [req.session.userId]);
+        const user = result.rows[0];
+        if (!user) return res.status(404).json({ error: 'User not found.' });
+        if (!await bcrypt.compare(currentPassword, user.password_hash)) {
+            return res.status(400).json({ error: 'Current password incorrect.' });
+        }
+        const methods = getStoredTwoFactorMethods(user.two_factor_method);
+        if (!methods.length) return res.status(400).json({ error: '2FA is not enabled.' });
+        if (targetMethod !== 'all' && !methods.includes(targetMethod)) {
+            return res.status(400).json({ error: 'That 2FA method is not enabled.' });
+        }
+
+        const method = targetMethod === 'all'
+            ? (methods.includes('app') ? 'app' : 'email')
+            : targetMethod;
+        const challenge = {
+            purpose: 'disable-method',
+            userId: Number(user.id),
+            method,
+            targetMethod,
+            expiresAt: Date.now() + TWO_FACTOR_CODE_TTL_MS,
+            attempts: 0,
+        };
+        if (method === 'email') {
+            if (!user.email) return res.status(400).json({ error: 'Your account does not have an email address available for 2FA.' });
+            const code = generateEmailTwoFactorCode();
+            await sendTwoFactorCodeEmail(user.email, user.username, code, 'disable');
+            challenge.codeHash = hashTwoFactorCode(code, user.id, 'disable-email');
+        }
+        req.session.twoFactorSettings = challenge;
+        res.json({
+            method,
+            targetMethod,
+            message: method === 'email'
+                ? `A confirmation code was sent to ${maskEmailAddress(user.email)}.`
+                : 'Enter the current 6-digit code from your authenticator app to confirm this 2FA change.',
+        });
+    } catch (err) {
+        console.error('Disable 2FA start error:', err);
+        res.status(500).json({ error: 'Could not start disabling 2FA.' });
+    }
+});
+
+app.post('/api/settings/2fa/disable/confirm', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const challenge = req.session.twoFactorSettings;
+    if (!challenge || challenge.purpose !== 'disable-method' || Number(challenge.userId) !== Number(req.session.userId) || challenge.expiresAt <= Date.now()) {
+        clearTwoFactorSettingsChallenge(req);
+        return res.status(400).json({ error: 'The disable request expired. Start again.' });
+    }
+    const code = normalizeTwoFactorCode(req.body.code);
+    if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'Enter a valid 6-digit code.' });
+
+    try {
+        const result = await pool.query('SELECT two_factor_method, two_factor_secret FROM users WHERE id = $1', [req.session.userId]);
+        const user = result.rows[0];
+        if (!user) return res.status(404).json({ error: 'User not found.' });
+        const method = String(challenge.method || '').toLowerCase();
+        const targetMethod = String(challenge.targetMethod || 'all').toLowerCase();
+        const methods = getStoredTwoFactorMethods(user.two_factor_method);
+        if (!methods.includes(method) || (targetMethod !== 'all' && !methods.includes(targetMethod))) {
+            clearTwoFactorSettingsChallenge(req);
+            return res.status(400).json({ error: 'Your 2FA settings changed. Start again.' });
+        }
+
+        let valid = false;
+        if (method === 'email') {
+            valid = safeEqualText(hashTwoFactorCode(code, req.session.userId, 'disable-email'), challenge.codeHash);
+        } else if (method === 'app') {
+            valid = verifyTotpCode(decryptTwoFactorSecret(user.two_factor_secret), code);
+        }
+        if (!valid) {
+            const attempts = Number(challenge.attempts || 0) + 1;
+            if (attempts >= TWO_FACTOR_MAX_ATTEMPTS) {
+                clearTwoFactorSettingsChallenge(req);
+                return res.status(400).json({ error: 'Too many incorrect codes. Start again.' });
+            }
+            req.session.twoFactorSettings = { ...challenge, attempts };
+            return res.status(400).json({ error: 'Incorrect authentication code.' });
+        }
+
+        if (targetMethod === 'all' || methods.length === 1) {
+            await pool.query(`
+                UPDATE users
+                SET two_factor_method = NULL, two_factor_secret = NULL, two_factor_enabled_at = NULL
+                WHERE id = $1
+            `, [req.session.userId]);
+        } else if (targetMethod === 'email') {
+            await pool.query(`
+                UPDATE users
+                SET two_factor_method = 'app'
+                WHERE id = $1
+            `, [req.session.userId]);
+        } else if (targetMethod === 'app') {
+            await pool.query(`
+                UPDATE users
+                SET two_factor_method = 'email', two_factor_secret = NULL
+                WHERE id = $1
+            `, [req.session.userId]);
+        }
+
+        clearTwoFactorSettingsChallenge(req);
+        res.json({
+            message: targetMethod === 'all'
+                ? '2FA has been disabled.'
+                : 'That 2FA method has been disabled.'
+        });
+    } catch (err) {
+        console.error('Disable 2FA confirm error:', err);
+        res.status(500).json({ error: 'Could not disable 2FA.' });
+    }
+});
+
+
+function clearSensitiveTwoFactorChallenge(req) {
+    if (req.session) req.session.twoFactorSensitive = null;
+}
+
+async function requireSensitiveTwoFactor(req, res, user, purpose) {
+    const methods = getStoredTwoFactorMethods(user?.two_factor_method);
+    if (!methods.length) {
+        clearSensitiveTwoFactorChallenge(req);
+        return true;
+    }
+    
+    const method = methods.includes('app') ? 'app' : 'email';
+
+    const code = normalizeTwoFactorCode(req.body?.twoFactorCode);
+    const existing = req.session?.twoFactorSensitive;
+    const challengeMatches = existing
+        && Number(existing.userId) === Number(user.id)
+        && existing.purpose === purpose
+        && existing.method === method
+        && Number(existing.expiresAt || 0) > Date.now();
+
+    if (!code) {
+        const challenge = {
+            userId: Number(user.id),
+            purpose,
+            method,
+            expiresAt: Date.now() + TWO_FACTOR_CODE_TTL_MS,
+            attempts: 0,
+            lastSentAt: 0,
+        };
+
+        if (method === 'email') {
+            if (!user.email) {
+                return res.status(400).json({ error: 'Your account does not have an email address available for 2FA.' });
+            }
+            const emailCode = generateEmailTwoFactorCode();
+            await sendTwoFactorCodeEmail(user.email, user.username, emailCode, 'account-action');
+            challenge.codeHash = hashTwoFactorCode(emailCode, user.id, `sensitive:${purpose}`);
+            challenge.lastSentAt = Date.now();
+        }
+
+        req.session.twoFactorSensitive = challenge;
+        res.status(428).json({
+            twoFactorRequired: true,
+            twoFactorPurpose: purpose,
+            method,
+            message: method === 'email'
+                ? `A 6-digit confirmation code was sent to ${maskEmailAddress(user.email)}.`
+                : 'Enter the current 6-digit code from your authenticator app.',
+        });
+        return false;
+    }
+
+    if (!/^\d{6}$/.test(code)) {
+        return res.status(400).json({ error: 'Enter a valid 6-digit two-factor code.' });
+    }
+    if (!challengeMatches) {
+        clearSensitiveTwoFactorChallenge(req);
+        return res.status(428).json({
+            twoFactorRequired: true,
+            twoFactorPurpose: purpose,
+            method,
+            message: 'Your confirmation request expired. Try the account action again.',
+        });
+    }
+
+    let valid = false;
+    if (method === 'email') {
+        valid = safeEqualText(
+            hashTwoFactorCode(code, user.id, `sensitive:${purpose}`),
+            existing.codeHash
+        );
+    } else if (method === 'app') {
+        try {
+            valid = verifyTotpCode(decryptTwoFactorSecret(user.two_factor_secret), code);
+        } catch (err) {
+            console.error('Sensitive authenticator verification error:', err);
+        }
+    }
+
+    if (!valid) {
+        const attempts = Number(existing.attempts || 0) + 1;
+        if (attempts >= TWO_FACTOR_MAX_ATTEMPTS) {
+            clearSensitiveTwoFactorChallenge(req);
+            return res.status(401).json({ error: 'Too many incorrect two-factor codes. Try the account action again.' });
+        }
+        req.session.twoFactorSensitive = { ...existing, attempts };
+        return res.status(401).json({ error: 'Incorrect authentication code.', twoFactorRetry: true });
+    }
+
+    clearSensitiveTwoFactorChallenge(req);
+    return true;
+}
+
+app.post('/api/settings/2fa/action/resend', async (req, res) => {
+    if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
+    const challenge = req.session?.twoFactorSensitive;
+    const purpose = String(req.body?.purpose || '');
+    if (!challenge || challenge.method !== 'email' || challenge.purpose !== purpose || Number(challenge.userId) !== Number(req.session.userId) || challenge.expiresAt <= Date.now()) {
+        clearSensitiveTwoFactorChallenge(req);
+        return res.status(400).json({ error: 'That two-factor confirmation request expired. Try the account action again.' });
+    }
+    const elapsed = Date.now() - Number(challenge.lastSentAt || 0);
+    if (elapsed < TWO_FACTOR_RESEND_COOLDOWN_MS) {
+        return res.status(429).json({ error: `Please wait ${Math.ceil((TWO_FACTOR_RESEND_COOLDOWN_MS - elapsed) / 1000)} seconds before requesting another code.` });
+    }
+
+    try {
+        const result = await pool.query('SELECT id, username, email, two_factor_method FROM users WHERE id = $1', [req.session.userId]);
+        const user = result.rows[0];
+        if (!user || !hasStoredTwoFactorMethod(user.two_factor_method, 'email') || !user.email) {
+            clearSensitiveTwoFactorChallenge(req);
+            return res.status(400).json({ error: '2FA by email is no longer available for this account.' });
+        }
+        const code = generateEmailTwoFactorCode();
+        await sendTwoFactorCodeEmail(user.email, user.username, code, 'account-action');
+        req.session.twoFactorSensitive = {
+            ...challenge,
+            codeHash: hashTwoFactorCode(code, user.id, `sensitive:${purpose}`),
+            expiresAt: Date.now() + TWO_FACTOR_CODE_TTL_MS,
+            attempts: 0,
+            lastSentAt: Date.now(),
+        };
+        return res.json({ message: `A new code was sent to ${maskEmailAddress(user.email)}.` });
+    } catch (err) {
+        console.error('Sensitive two-factor resend error:', err);
+        return res.status(500).json({ error: 'Could not send another confirmation code.' });
+    }
+});
+
 app.get('/api/settings/profile', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
 
@@ -4917,7 +5743,7 @@ app.post('/api/settings/email', async (req, res) => {
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [emailIdentity]);
 
         const userResult = await client.query(
-            'SELECT id, username, password_hash, email FROM users WHERE id = $1 FOR UPDATE',
+            'SELECT id, username, password_hash, email, two_factor_method, two_factor_secret FROM users WHERE id = $1 FOR UPDATE',
             [req.session.userId]
         );
         const user = userResult.rows[0];
@@ -4931,6 +5757,10 @@ app.post('/api/settings/email', async (req, res) => {
         if (!validPassword) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: "Current password incorrect." });
+        }
+        if (!await requireSensitiveTwoFactor(req, res, user, 'change-email')) {
+            await client.query('ROLLBACK');
+            return;
         }
         if (getEmailIdentity(user.email) === emailIdentity) {
             await client.query('ROLLBACK');
@@ -4995,10 +5825,16 @@ app.post('/api/settings/password', async (req, res) => {
     if (passError) return res.status(400).json({ error: passError });
 
     try {
-        const userRes = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.session.userId]);
+        const userRes = await pool.query(`
+            SELECT id, username, email, password_hash, two_factor_method, two_factor_secret
+            FROM users WHERE id = $1
+        `, [req.session.userId]);
+        const user = userRes.rows[0];
+        if (!user) return res.status(404).json({ error: 'User not found.' });
         
-        const isMatch = await bcrypt.compare(currentPassword, userRes.rows[0].password_hash);
+        const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
         if (!isMatch) return res.status(400).json({ error: "Current password incorrect." });
+        if (!await requireSensitiveTwoFactor(req, res, user, 'change-password')) return;
 
         const hashedNewPassword = await bcrypt.hash(newPassword, 10);
         
@@ -5023,7 +5859,7 @@ app.delete('/api/settings/delete', async (req, res) => {
         await client.query('BEGIN');
 
         const userRes = await client.query(`
-            SELECT id, password_hash, role
+            SELECT id, username, email, password_hash, role, two_factor_method, two_factor_secret
             FROM users
             WHERE id = $1
             FOR UPDATE
@@ -5038,6 +5874,10 @@ app.delete('/api/settings/delete', async (req, res) => {
         if (!isMatch) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: "Incorrect password. Account was not deleted." });
+        }
+        if (!await requireSensitiveTwoFactor(req, res, user, 'delete-account')) {
+            await client.query('ROLLBACK');
+            return;
         }
 
         if (isStaffRole(user.role)) {
@@ -5106,7 +5946,10 @@ app.delete('/api/settings/delete', async (req, res) => {
                 submission_notifications = FALSE,
                 submission_discord_ping = FALSE,
                 verification_notifications = FALSE,
-                verification_discord_ping = FALSE
+                verification_discord_ping = FALSE,
+                two_factor_method = NULL,
+                two_factor_secret = NULL,
+                two_factor_enabled_at = NULL
             WHERE id = $2
         `, [newUsername, userId]);
 
