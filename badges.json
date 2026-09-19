@@ -181,9 +181,25 @@
         {
           "id": 1,
           "name": "Eternal Badge",
-          "description": "This badge was awarded to the winner of the Eternal Door contest held in June 2026.",
+          "description": "This badge was awarded to the winner of the \"Web Dashers vs. Eternal Door\" contest held in June 2026.",
           "threshold": 1,
           "iconPath": "/assets/badges/badge-14.png"
+        }
+      ]
+    },
+    {
+      "id": "ajar-partition",
+      "scope": "global",
+      "requirement": {
+        "type": "owner_only"
+      },
+      "tiers": [
+        {
+          "id": 1,
+          "name": "Ajar Badge",
+          "description": "This badge is awarded to the winner of the \"Web Dashers vs. Ajar Partition\" contest.",
+          "threshold": 1,
+          "iconPath": "/assets/badges/badge-15.png"
         }
       ]
     }
