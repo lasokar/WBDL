@@ -1853,7 +1853,7 @@ const session = require('cookie-session');
 const sessionConfig = {
   name: 'session',
   keys: [process.env.SESSION_SECRET],
-  maxAge: 24 * 60 * 60 * 1000,
+  maxAge: 2 * 7 * 24 * 60 * 60 * 1000,
   sameSite: 'lax'
 };
 
