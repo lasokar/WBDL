@@ -202,6 +202,22 @@
           "iconPath": "/assets/badges/badge-15.png"
         }
       ]
+    },
+    {
+      "id": "event-badge",
+      "scope": "global",
+      "requirement": {
+        "type": "owner_only"
+      },
+      "tiers": [
+        {
+          "id": 1,
+          "name": "Event Badge",
+          "description": "This badge is earned by participating in an official WBDL event.",
+          "threshold": 1,
+          "iconPath": "/assets/badges/badge-16.png"
+        }
+      ]
     }
   ]
 }
