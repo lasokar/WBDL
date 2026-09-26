@@ -1414,41 +1414,34 @@ async function getCurrentLeaderboardLeader(db, list) {
 }
 
 async function syncLeaderboardTopOne(list, db = pool) {
-    if (list === 'impossible') return { changedUserIds: [] };
+    return { changedUserIds: [] };
+}
 
-    const currentLeaderId = await getCurrentLeaderboardLeader(db, list);
-    const openResult = await db.query(`
-        SELECT id, user_id
-        FROM leaderboard_top1_periods
-        WHERE list_type = $1 AND ended_at IS NULL
-        ORDER BY started_at DESC
-        LIMIT 1
-    `, [list]);
-    const open = openResult.rows[0] || null;
-
-    if (String(open?.user_id || '') === String(currentLeaderId || '')) {
-        return { changedUserIds: [] };
-    }
-
-    const changedUserIds = [];
-    if (open) {
-        changedUserIds.push(open.user_id);
-        await db.query('UPDATE leaderboard_top1_periods SET ended_at = NOW() WHERE id = $1', [open.id]);
-    }
-
-    if (currentLeaderId) {
-        changedUserIds.push(currentLeaderId);
-        try {
-            await db.query(`
-                INSERT INTO leaderboard_top1_periods (user_id, list_type, started_at)
-                VALUES ($1, $2, NOW())
-            `, [currentLeaderId, list]);
-        } catch (err) {
-            if (err.code !== '23505') throw err;
+async function recordTopOne(db = pool) {
+    const client = db === pool ? await pool.connect() : db;
+    const ownsClient = client !== db;
+    try {
+        if (ownsClient) await client.query('BEGIN');
+        await client.query(`SELECT pg_advisory_xact_lock(hashtext('wbdl_top1_daily_days'))`);
+        const currentLeaderId = await getCurrentLeaderboardLeader(client, 'primary');
+        if (!currentLeaderId) {
+            if (ownsClient) await client.query('COMMIT');
+            return null;
         }
+        const result = await client.query(`
+            UPDATE users
+            SET top_1_days = COALESCE(top_1_days, 0) + 1
+            WHERE id = $1
+            RETURNING id, top_1_days
+        `, [currentLeaderId]);
+        if (ownsClient) await client.query('COMMIT');
+        return result.rows[0] || null;
+    } catch (err) {
+        if (ownsClient) await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        if (ownsClient) client.release();
     }
-
-    return { changedUserIds: [...new Set(changedUserIds.map(Number).filter(Boolean))] };
 }
 
 async function getBadgeMetrics(userId, list, db = pool) {
@@ -1518,9 +1511,9 @@ async function getBadgeMetrics(userId, list, db = pool) {
                   AND (r.accepted_position = 1 OR (r.accepted_position IS NULL AND d.position = 1))
             ) AS completed_top_1,
             (
-                SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(p.ended_at, NOW()) - p.started_at))), 0)::bigint
-                FROM leaderboard_top1_periods p
-                WHERE p.user_id = $1 AND p.list_type = $2
+                SELECT COALESCE(top_1_days, 0)::int * 86400
+                FROM users
+                WHERE id = $1
             ) AS top_1_duration_seconds
     `, [userId, list]);
 
@@ -1893,6 +1886,30 @@ app.use(async (req, res, next) => {
     } catch (err) {
         console.error('Account enforcement middleware error:', err);
         next(err);
+    }
+});
+
+app.get('/api/leaderboard/top1-check', async (req, res) => {
+    const cronSecret = process.env.CRON_SECRET || process.env.DISCORD_SYNC_SECRET;
+    if (!cronSecret) return res.status(503).json({ error: 'Cron secret not configured.' });
+
+    const auth = req.headers.authorization || '';
+    const provided = auth.startsWith('Bearer ') ? auth.slice(7) : req.query.secret;
+    if (provided !== cronSecret) return res.status(401).json({ error: 'Unauthorized' });
+
+    try {
+        const result = await recordTopOne();
+        if (result?.id) {
+            await evaluateUserBadges(Number(result.id), 'primary');
+        }
+        res.json({
+            ok: true,
+            leaderId: result?.id ? Number(result.id) : null,
+            top1Days: result?.top_1_days != null ? Number(result.top_1_days) : null,
+        });
+    } catch (err) {
+        console.error('Top 1 tracking error:', err);
+        res.status(500).json({ error: 'Top-1 tracking failed.' });
     }
 });
 
