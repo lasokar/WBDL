@@ -1401,7 +1401,6 @@ async function getCurrentLeaderboardLeader(db, list) {
               AND r.list_type = $1
               AND d.list_type = $1
               AND COALESCE(u.leaderboard_banned, FALSE) = FALSE
-              AND COALESCE(u.account_disabled, FALSE) = FALSE
             GROUP BY u.id
         )
         SELECT id
@@ -4780,7 +4779,6 @@ app.get('/api/profile/:username', async (req, res) => {
                   AND r.list_type = $2
                   AND d.list_type = $2
                   AND COALESCE(u.leaderboard_banned, FALSE) = FALSE
-                  AND COALESCE(u.account_disabled, FALSE) = FALSE
                 GROUP BY u.id
             ),
             RankedPlayers AS (
@@ -4883,8 +4881,7 @@ app.get('/api/leaderboard/search', async (req, res) => {
                 u.color2,
                 u.glow
             FROM users u
-            WHERE COALESCE(u.account_disabled, FALSE) = FALSE
-              AND COALESCE(u.leaderboard_banned, FALSE) = FALSE
+            WHERE COALESCE(u.leaderboard_banned, FALSE) = FALSE
               AND (
                     u.username ILIKE $1
                     OR COALESCE(u.display_name, '') ILIKE $1
@@ -4994,7 +4991,6 @@ app.get('/api/leaderboard', async (req, res) => {
                   AND r.list_type = $1
                   AND d.list_type = $1
                   AND COALESCE(u.leaderboard_banned, FALSE) = FALSE
-                  AND COALESCE(u.account_disabled, FALSE) = FALSE
                 GROUP BY u.id, u.username, u.display_name, u.role, u.icon_type, u.icon_id, u.color1, u.color2, u.glow
                 HAVING SUM(
                     CASE 
@@ -6579,7 +6575,6 @@ app.get('/api/clans', async (req, res) => {
                   AND r.list_type = $1
                   AND d.list_type = $1
                   AND COALESCE(u.leaderboard_banned, FALSE) = FALSE
-                  AND COALESCE(u.account_disabled, FALSE) = FALSE
                 GROUP BY u.id
             ), clan_scores AS (
                 SELECT
@@ -6675,7 +6670,6 @@ app.get('/api/clans/:clanId', async (req, res) => {
                   AND r.list_type = $1
                   AND d.list_type = $1
                   AND COALESCE(u.leaderboard_banned, FALSE) = FALSE
-                  AND COALESCE(u.account_disabled, FALSE) = FALSE
                 GROUP BY u.id
             ), clan_scores AS (
                 SELECT
@@ -6728,7 +6722,6 @@ app.get('/api/clans/:clanId', async (req, res) => {
                   AND r.list_type = $1
                   AND d.list_type = $1
                   AND COALESCE(u.leaderboard_banned, FALSE) = FALSE
-                  AND COALESCE(u.account_disabled, FALSE) = FALSE
                 GROUP BY u.id
             )
             SELECT
