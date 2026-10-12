@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/list-config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Submit Record | WBDL</title>
@@ -659,7 +660,8 @@ input:-webkit-autofill:focus {
 <script>
     let demonList = [];
     let currentTab = 'progress';
-    const isImpossibleList = window.location.hostname.includes('impossible');
+    const isImpossibleList = window.WBDLList.id === 'impossible';
+    const isChallengeList = window.WBDLList.id === 'challenge';
 
     function setupListLabels() {
         const verifTab = document.getElementById('tab-verif');

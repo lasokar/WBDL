@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/list-config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog | WBDL</title>
@@ -88,7 +89,7 @@
 
     <script src="/nav.js"></script>
     <script>
-        const isImpossibleList = window.location.hostname.includes('impossible');
+        const isImpossibleList = window.WBDLList.id === 'impossible';
 
         if (isImpossibleList) {
             document.body.classList.add('impossible-list');

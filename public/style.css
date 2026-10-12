@@ -99,7 +99,7 @@ a {
     color: var(--accent);
 }
 
-body.impossible-list {
+html[data-list="impossible"], body.impossible-list {
     --accent: #ff4444;
     --accent-color: #ff4444;
     --accent-hover: #ff6b6b;
@@ -109,6 +109,18 @@ body.impossible-list {
     --card-bg: #181011;
     --surface-2: #221416;
     --border: #362325;
+}
+
+html[data-list="challenge"], body.challenge-list {
+    --accent: #b77bff;
+    --accent-color: #b77bff;
+    --accent-hover: #c99bff;
+    --bg: #110b19;
+    --bg-color: #110b19;
+    --surface: #1c1328;
+    --card-bg: #1c1328;
+    --surface-2: #291c39;
+    --border: #413052;
 }
 
 body.impossible-list #noti-badge {
@@ -236,11 +248,28 @@ body.impossible-list #noti-badge {
     background-color: var(--surface-2);
 }
 
-.dropdown:hover .dropdown-content,
-.dropdown-content:hover {
+.dropdown:not(.lists-dropdown):hover .dropdown-content,
+.dropdown:not(.lists-dropdown):focus-within .dropdown-content,
+.dropdown.is-open .dropdown-content {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
+}
+
+.lists-dropdown .dropdown-content {
+    left: 0;
+    right: auto;
+}
+
+.lists-dropdown a[aria-current="page"] {
+    color: var(--accent);
+    font-weight: 800;
+    background: var(--surface-2);
+}
+
+.lists-dropdown .dropbtn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
 }
 
 .dropdown::after {

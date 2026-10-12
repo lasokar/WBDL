@@ -17,22 +17,19 @@ const resolvedFfmpegPath = process.env.FFMPEG_PATH || bundledFfmpegPath;
 if (resolvedFfmpegPath) ffmpeg.setFfmpegPath(resolvedFfmpegPath);
 require('dotenv').config();
 const app = express();
+const lists = require('./public/list-config');
+const { sendListPage, htmlFiles } = require('./list-pages');
 app.use(cors({
-    origin: ['https://webdemonlist.org', 'https://impossible.webdemonlist.org'],
+    origin: ['https://webdemonlist.org', 'https://impossible.webdemonlist.org', 'https://challenge.webdemonlist.org'],
     credentials: true
 }));
 app.use(express.json());
-app.use(express.static('public'));
-
 app.use((req, res, next) => {
-    const host = req.headers.host || '';
-    if (host.startsWith('impossible.')) {
-        req.currentList = 'impossible';
-    } else {
-        req.currentList = 'main';
-    }
+    req.currentList = lists.fromHost(req.headers.host);
     next();
 });
+app.use(htmlFiles);
+app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
 const { Resend } = require('resend');
 const QRCode = require('qrcode');
@@ -1552,11 +1549,16 @@ function getBadgeMetricValue(metrics, requirement = {}) {
     return Number(metrics[requirement.type]) || 0;
 }
 
-async function evaluateUserBadges(userId, list, db = pool) {
-    if (list === 'impossible') return [];
+// Completion and Victor badges belong to the main list, not the Challenge List.
+const CHALLENGE_DISABLED_BADGE_GROUPS = new Set(['levels-completed', 'top-level-completion']);
 
+function isBadgeGroupAvailableOnList(groupId, list) {
+    return list !== 'challenge' || !CHALLENGE_DISABLED_BADGE_GROUPS.has(String(groupId));
+}
+
+async function evaluateUserBadges(userId, list, db = pool) {
     const config = loadBadgeConfig();
-    const metrics = await getBadgeMetrics(userId, list, db);
+    const metrics = await getBadgeMetrics(userId, 'primary', db);
     const userResult = await db.query(`
         SELECT COALESCE(badges, '[]'::jsonb) AS badges
         FROM users
@@ -1633,14 +1635,15 @@ async function evaluateUserBadges(userId, list, db = pool) {
         const tierId = Number(badge?.tierId);
         const listType = String(badge?.listType || 'primary');
         if (!groupId || !Number.isInteger(tierId)) continue;
-        if (listType !== list && listType !== 'global') continue;
-        existing.set(`${groupId}:${tierId}:${listType}`, badge);
+        if (listType !== 'primary' && listType !== 'global') continue;
+        existing.set(`${groupId}:${tierId}:global`, badge);
     }
 
     for (const group of config.groups) {
+        if (!isBadgeGroupAvailableOnList(group.id, list)) continue;
         if (['manual', 'owner_only', 'discord_guild_member'].includes(group?.requirement?.type)) continue;
 
-        const badgeListType = group?.scope === 'global' ? 'global' : list;
+        const badgeListType = 'global';
         const progress = getBadgeMetricValue(metrics, group.requirement);
         for (const tier of Array.isArray(group.tiers) ? group.tiers : []) {
             const tierId = Number(tier.id);
@@ -1667,7 +1670,7 @@ async function evaluateUserBadges(userId, list, db = pool) {
                       FROM jsonb_array_elements(COALESCE(badges, '[]'::jsonb)) AS stored(entry)
                       WHERE stored.entry->>'groupId' = $3
                         AND stored.entry->>'tierId' = $4
-                        AND COALESCE(stored.entry->>'listType', 'primary') = $5
+                        AND COALESCE(stored.entry->>'listType', 'primary') IN ('primary', 'global')
                   )
                 RETURNING badges
             `, [
@@ -1675,7 +1678,6 @@ async function evaluateUserBadges(userId, list, db = pool) {
                 JSON.stringify([badgeEntry]),
                 group.id,
                 String(tierId),
-                badgeListType,
             ]);
 
             if (inserted.rows[0]) {
@@ -1697,14 +1699,14 @@ async function evaluateUserBadges(userId, list, db = pool) {
                 const match = (Array.isArray(refreshed.rows[0]?.badges) ? refreshed.rows[0].badges : [])
                     .find(entry => String(entry?.groupId) === String(group.id)
                         && Number(entry?.tierId) === tierId
-                        && String(entry?.listType || 'primary') === badgeListType);
+                        && ['primary', 'global'].includes(String(entry?.listType || 'primary')));
                 if (match) existing.set(key, match);
             }
         }
     }
 
     return config.groups.map(group => {
-        const badgeListType = group?.scope === 'global' ? 'global' : list;
+        const badgeListType = 'global';
         const progressValue = getBadgeMetricValue(metrics, group.requirement);
         const tiers = (Array.isArray(group.tiers) ? group.tiers : [])
             .map(tier => {
@@ -1742,11 +1744,11 @@ async function evaluateUserBadges(userId, list, db = pool) {
                     : null,
             },
         };
-    }).filter(group => group.unlocked);
+    }).filter(group => group.unlocked && isBadgeGroupAvailableOnList(group.id, list));
 }
 
 app.get('/api/demons', async (req, res) => {
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const timeMachineDate = parseTimeMachineDate(req.query.date || req.query.time_machine_date);
 
     try {
@@ -1770,7 +1772,7 @@ app.get('/api/demons', async (req, res) => {
 
 
 app.get('/api/time-machine/min-date', async (req, res) => {
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     try {
         const minDate = await getTimeMachineMinDateValue(list);
@@ -1782,61 +1784,64 @@ app.get('/api/time-machine/min-date', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  sendListPage(req, res, 'index.html');
 });
 app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'login.html'));
+    sendListPage(req, res, 'login.html');
 });
 app.get('/register', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'register.html'));
+    sendListPage(req, res, 'register.html');
 });
 app.get('/demon/:id', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'demon.html'));
+    sendListPage(req, res, 'demon.html');
 });
 app.get('/submit', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'submit.html'));
+    sendListPage(req, res, 'submit.html');
 });
 app.get('/roulette', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'roulette.html'));
+    sendListPage(req, res, 'roulette.html');
 });
 app.get('/profile', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'profile.html'));
+    sendListPage(req, res, 'profile.html');
 });
 app.get('/leaderboard', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'leaderboard.html'));
+    sendListPage(req, res, 'leaderboard.html');
 });
 app.get('/clans', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'clans.html'));
+    sendListPage(req, res, 'clans.html');
 });
 app.get('/clans/:clanName', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'clans.html'));
+    sendListPage(req, res, 'clans.html');
 });
 app.get('/account-settings', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'settings.html'));
+    sendListPage(req, res, 'settings.html');
 });
 app.get('/notifications', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'notifications.html'));
+    sendListPage(req, res, 'notifications.html');
 });
 app.get('/verify', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'verify.html'));
+    sendListPage(req, res, 'verify.html');
 });
 app.get('/changelog', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'changelog.html'));
+    sendListPage(req, res, 'changelog.html');
 });
 app.get('/guidelines', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'guidelines.html'));
+    sendListPage(req, res, 'guidelines.html');
 });
 app.get('/staff', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'staff.html'));
+    sendListPage(req, res, 'staff.html');
 });
 app.get('/about', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'about.html'));
+    sendListPage(req, res, 'about.html');
+});
+app.get('/more-lists', (req, res) => {
+    sendListPage(req, res, 'more-lists.html');
 });
 app.get('/forgot-password', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'forgot-password.html'));
+    sendListPage(req, res, 'forgot-password.html');
 });
 app.get('/reset-password', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'reset-password.html'));
+    sendListPage(req, res, 'reset-password.html');
 });
 
 const bcrypt = require('bcrypt');
@@ -2528,10 +2533,10 @@ app.post('/api/submit', async (req, res) => {
     }
 
     const { demonId, percentage, videoUrl, enjoymentRating, personalPlacement } = req.body;
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const newPercent = list === 'impossible'
         ? Math.round(Number.parseFloat(percentage) * 100) / 100
-        : Number.parseInt(percentage, 10);
+        : Number(percentage);
     const normalizedEnjoyment = normalizeEnjoymentRating(enjoymentRating, newPercent);
     const normalizedPersonalPlacement = normalizePersonalPlacement(personalPlacement, newPercent);
     const comments = cleanProfileText(req.body.comments, 1000);
@@ -2602,7 +2607,7 @@ app.post('/api/submit', async (req, res) => {
 
         const { position, requirement, list_type } = demonQuery.rows[0];
 
-        if (list_type === 'primary' && position > 150) {
+        if (list_type !== 'impossible' && position > 150) {
             await client.query('ROLLBACK');
             return res.status(400).json({ error: "Submissions for the Legacy List are disabled." });
         }
@@ -2612,7 +2617,7 @@ app.post('/api/submit', async (req, res) => {
             return res.status(400).json({ error: "This level does not belong to the active list." });
         }
 
-        if (list === 'primary') {
+        if (list !== 'impossible') {
             if (position > 75) {
                 if (newPercent < 100) {
                     await client.query('ROLLBACK');
@@ -2702,7 +2707,7 @@ app.post('/api/submit', async (req, res) => {
 
 app.get('/api/records/pending', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     try {
         const result = await pool.query(`
@@ -2722,7 +2727,7 @@ app.get('/api/records/pending', async (req, res) => {
 
 app.get('/api/records/completed-ids', async (req, res) => {
     if (!req.session.userId) return res.json([]);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     try {
         const result = await pool.query(`
@@ -2742,11 +2747,11 @@ app.get('/api/records/completed-ids', async (req, res) => {
 
 app.patch('/api/records/pending/:recordId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const recordId = parseInt(req.params.recordId, 10);
     const percentage = list === 'impossible'
         ? Math.round(Number.parseFloat(req.body.percentage) * 100) / 100
-        : Number.parseInt(req.body.percentage, 10);
+        : Number(req.body.percentage);
     const normalizedVideo = normalizeVideoSubmission(req.body.videoUrl);
     const enjoymentRating = normalizeEnjoymentRating(req.body.enjoymentRating, percentage);
     const personalPlacement = normalizePersonalPlacement(req.body.personalPlacement, percentage);
@@ -2800,7 +2805,7 @@ app.patch('/api/records/pending/:recordId', async (req, res) => {
             return res.status(404).json({ error: "Pending record not found." });
         }
 
-        if (list === 'primary') {
+        if (list !== 'impossible') {
             if (Number(record.position) > 150) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ error: "Legacy List submissions are disabled." });
@@ -2845,7 +2850,7 @@ app.patch('/api/records/pending/:recordId', async (req, res) => {
 
 app.delete('/api/records/pending/:recordId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const recordId = parseInt(req.params.recordId, 10);
     if (!Number.isInteger(recordId)) return res.status(400).json({ error: "Invalid record." });
 
@@ -2906,11 +2911,7 @@ app.post('/api/owner/users/:userId/badges', isOwner, async (req, res) => {
     const targetUserId = parseInt(req.params.userId, 10);
     const groupId = String(req.body.groupId || '').trim();
     const tierId = Number(req.body.tierId);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
-
-    if (list === 'impossible') {
-        return res.status(404).json({ error: 'Badges are not available on the ILL.' });
-    }
+    const list = req.currentList;
 
     if (!Number.isInteger(targetUserId) || !groupId || !Number.isInteger(tierId)) {
         return res.status(400).json({ error: 'Invalid badge selection.' });
@@ -2922,11 +2923,14 @@ app.post('/api/owner/users/:userId/badges', isOwner, async (req, res) => {
         const tier = (Array.isArray(group?.tiers) ? group.tiers : [])
             .find(item => Number(item.id) === tierId);
         if (!group || !tier) return res.status(404).json({ error: 'Badge not found.' });
+        if (!isBadgeGroupAvailableOnList(groupId, list)) {
+            return res.status(400).json({ error: 'This badge cannot be granted on the Challenge List.' });
+        }
 
         const targetResult = await pool.query('SELECT id FROM users WHERE id = $1', [targetUserId]);
         if (!targetResult.rows.length) return res.status(404).json({ error: 'User not found.' });
 
-        const badgeListType = group.scope === 'global' ? 'global' : list;
+        const badgeListType = 'global';
         const badgeEntry = {
             groupId,
             tierId,
@@ -2947,10 +2951,10 @@ app.post('/api/owner/users/:userId/badges', isOwner, async (req, res) => {
                   FROM jsonb_array_elements(COALESCE(badges, '[]'::jsonb)) AS stored(entry)
                   WHERE stored.entry->>'groupId' = $3
                     AND stored.entry->>'tierId' = $4
-                    AND COALESCE(stored.entry->>'listType', 'primary') = $5
+                    AND COALESCE(stored.entry->>'listType', 'primary') IN ('primary', 'global')
               )
             RETURNING id
-        `, [targetUserId, JSON.stringify([badgeEntry]), groupId, String(tierId), badgeListType]);
+        `, [targetUserId, JSON.stringify([badgeEntry]), groupId, String(tierId)]);
 
         if (!inserted.rows.length) {
             return res.status(409).json({ error: 'This user already has that badge.' });
@@ -3020,7 +3024,7 @@ app.post('/api/moderation/users/:userId/leaderboard-ban', isMod, async (req, res
     }
     const banned = req.body.banned;
     const reason = cleanProfileText(req.body.reason, 1000);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     if (!Number.isInteger(targetUserId)) return res.status(400).json({ error: "Invalid user." });
 
     try {
@@ -3074,7 +3078,7 @@ app.post('/api/admin/users/:userId/disable', isAdmin, async (req, res) => {
     }
     const disabled = req.body.disabled;
     const reason = cleanProfileText(req.body.reason, 1000);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     if (!Number.isInteger(targetUserId)) return res.status(400).json({ error: "Invalid user." });
 
     const client = await pool.connect();
@@ -3245,7 +3249,7 @@ app.post('/api/owner/users/:userId/reset', isOwner, async (req, res) => {
 
         await client.query('COMMIT');
 
-        for (const list of ['primary', 'impossible']) {
+        for (const list of ['primary', 'impossible', 'challenge']) {
             const sync = await syncLeaderboardTopOne(list);
             for (const changedUserId of sync.changedUserIds || []) {
                 if (changedUserId) await evaluateUserBadges(changedUserId, list);
@@ -3269,7 +3273,7 @@ app.post('/api/owner/users/:userId/role', isOwner, async (req, res) => {
     const targetUserId = parseInt(req.params.userId, 10);
     const requestedRole = String(req.body.role || '').trim().toLowerCase();
     const reason = cleanProfileText(req.body.reason, 1000);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     if (!Number.isInteger(targetUserId)) {
         return res.status(400).json({ error: 'Invalid user.' });
@@ -3337,7 +3341,7 @@ app.post('/api/owner/users/:userId/role', isOwner, async (req, res) => {
             body: `Your WBDL account role was changed to **${roleLabel}**.${reason ? `\n\n**Reason:** ${reason}` : ''}`,
         });
 
-        for (const listType of ['primary', 'impossible']) {
+        for (const listType of ['primary', 'impossible', 'challenge']) {
             const sync = await syncLeaderboardTopOne(listType, client);
             for (const userId of new Set([targetUserId, ...(sync.changedUserIds || [])])) {
                 if (userId) await evaluateUserBadges(userId, listType, client);
@@ -3399,10 +3403,10 @@ app.patch('/api/admin/users/:userId/username', isAdmin, async (req, res) => {
 app.patch('/api/admin/users/:userId/records/:recordId', isAdmin, async (req, res) => {
     const targetUserId = parseInt(req.params.userId, 10);
     const recordId = parseInt(req.params.recordId, 10);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const percentage = list === 'impossible'
         ? Math.round(Number.parseFloat(req.body.percentage) * 100) / 100
-        : Number.parseInt(req.body.percentage, 10);
+        : Number(req.body.percentage);
     const videoUrl = String(req.body.videoUrl || '').trim();
     const normalizedVideo = normalizeVideoSubmission(videoUrl);
     const status = String(req.body.status || '').toLowerCase();
@@ -3489,7 +3493,7 @@ app.delete('/api/admin/users/:userId/records/:recordId', isAdmin, async (req, re
     const targetUserId = parseInt(req.params.userId, 10);
     const recordId = parseInt(req.params.recordId, 10);
     const reason = cleanProfileText(req.body?.reason, 1000);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     if (!Number.isInteger(targetUserId) || !Number.isInteger(recordId)) return res.status(400).json({ error: "Invalid record." });
 
     try {
@@ -3662,7 +3666,7 @@ app.patch('/api/admin/verification-notification-settings', isAdmin, async (req, 
 });
 
 app.get('/api/admin/pending', isMod, async (req, res) => {
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     try {
         const result = await pool.query(`
@@ -3684,7 +3688,7 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
     const { recordId, status, reason } = req.body;
     const note = cleanProfileText(req.body.note, 2000);
     const actorId = req.session.userId;
-    const activeSubdomainList = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const activeSubdomainList = req.currentList;
 
     if (!['accepted', 'rejected'].includes(status)) {
         return res.status(400).json({ error: "Invalid record status." });
@@ -3795,13 +3799,13 @@ const ILL_DISCORD_WEBHOOK_URL = process.env.ILL_DISCORD_WEBHOOK_URL;
 
 async function sendDiscordNotification(content, list = 'primary') {
     const isILL = list === 'impossible';
-    const webhookUrl = isILL ? ILL_DISCORD_WEBHOOK_URL : DISCORD_WEBHOOK_URL;
+    const webhookUrl = list === 'challenge' ? process.env.CL_DISCORD_WEBHOOK_URL : (isILL ? ILL_DISCORD_WEBHOOK_URL : DISCORD_WEBHOOK_URL);
     
     if (!webhookUrl) return;
     
-    const username = isILL ? "Impossible List Changes" : "List Changes";
-    const avatarUrl = isILL ? "https://webdemonlist.org/assets/impossible.png" : "https://webdemonlist.org/assets/icon.png";
-    const roleId = isILL ? "1531774623052599539" : "1493780241628528730";
+    const username = list === "challenge" ? "Challenge List Changes" : (isILL ? "Impossible List Changes" : "List Changes");
+    const avatarUrl = list === "challenge" ? "https://challenge.webdemonlist.org/assets/challenge.png" : (isILL ? "https://webdemonlist.org/assets/impossible.png" : "https://webdemonlist.org/assets/icon.png");
+    const roleId = list === "challenge" ? "1559002390794084475" : (isILL ? "1531774623052599539" : "1493780241628528730");
 
     try {
         await fetch(webhookUrl, {
@@ -3810,7 +3814,7 @@ async function sendDiscordNotification(content, list = 'primary') {
             body: JSON.stringify({
                 username: username,
                 avatar_url: avatarUrl,
-                content: `<@&${roleId}> ${content}`
+                content: `${roleId ? `<@&${roleId}> ` : ""}${content}`
             })
         });
     } catch (err) {
@@ -3820,9 +3824,12 @@ async function sendDiscordNotification(content, list = 'primary') {
 
 app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
     const { name, author, position, level_id, requirement, showcase_url } = req.body;
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const actorId = req.session.userId;
-    const targetPos = parseInt(position);
+    const targetPos = Number(position);
+    if (!Number.isInteger(targetPos) || targetPos < 1 || targetPos > 150) {
+        return res.status(400).json({ error: 'Levels must be placed between 1 and 150.' });
+    }
 
     const client = await pool.connect();
 
@@ -3831,7 +3838,6 @@ app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
         const userRole = userRes.rows[0]?.role;
 
         if (targetPos > 150) {
-            client.release();
             return res.status(403).json({ error: "Levels cannot be placed in the legacy list." });
         }
 
@@ -3880,7 +3886,7 @@ app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
 
         if (context.length > 0) msg += ", " + context.join(" and ");
 
-        if (list === 'primary') {
+        if (list !== 'impossible') {
             msg += ` with a list requirement of **${requirement}%**.`;
 
             let pushes = [];
@@ -3901,7 +3907,7 @@ app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
             await evaluateUserBadges(changedUserId, list);
         }
 
-        res.json({ message: "Demon added" });
+        res.json({ message: "Demon added", demonId: newDemonId });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error(err);
@@ -3913,7 +3919,7 @@ app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
 
 app.post('/api/admin/delete-demon', isOwner, async (req, res) => {
     const { id, position } = req.body;
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const actorId = req.session.userId;
     const targetPos = parseInt(position);
 
@@ -3971,7 +3977,7 @@ app.post('/api/admin/delete-demon', isOwner, async (req, res) => {
 
         let msg = `**${levelName}** has been removed from the list.`;
 
-        if (list === 'primary') {
+        if (list !== 'impossible') {
             let pushes = [];
             if (targetPos <= 75 && old76) pushes.push(`**${old76}** back to the Main List`);
             if (targetPos <= 150 && old151) pushes.push(`**${old151}** back to the Extended List`);
@@ -4000,7 +4006,7 @@ app.post('/api/admin/delete-demon', isOwner, async (req, res) => {
 
 app.patch('/api/admin/demons/:id/banner', isAdmin, async (req, res) => {
     const demonId = parseInt(req.params.id, 10);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const rawBannerUrl = String(req.body?.bannerUrl ?? '').trim();
 
     if (!Number.isInteger(demonId)) {
@@ -4033,7 +4039,7 @@ app.patch('/api/admin/demons/:id/banner', isAdmin, async (req, res) => {
 
         const current = currentResult.rows[0];
         let requirement = Number(current.requirement) || 0;
-        if (list === 'primary' && Object.prototype.hasOwnProperty.call(req.body || {}, 'requirement')) {
+        if (list !== 'impossible' && Object.prototype.hasOwnProperty.call(req.body || {}, 'requirement')) {
             const requestedRequirement = Number(req.body.requirement);
             if (!Number.isInteger(requestedRequirement) || requestedRequirement < 1 || requestedRequirement > 100) {
                 return res.status(400).json({ error: 'Minimum list percentage must be a whole number from 1 to 100.' });
@@ -4109,7 +4115,7 @@ app.patch('/api/admin/demons/:id/banner', isAdmin, async (req, res) => {
 
 app.get('/api/demons/:id/banner-image', async (req, res) => {
     const demonId = Number.parseInt(req.params.id, 10);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     if (!Number.isInteger(demonId)) return res.status(400).end();
 
     try {
@@ -4126,7 +4132,7 @@ app.get('/api/demons/:id/banner-image', async (req, res) => {
 
 app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
     const { id, oldPosition, newPosition } = req.body;
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const actorId = req.session.userId;
 
     const oldPos = parseInt(oldPosition);
@@ -4216,7 +4222,7 @@ app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
         if (context.length > 0) msg += ", " + context.join(" and ");
         msg += ".";
 
-        if (list === 'primary') {
+        if (list !== 'impossible') {
             let pushes = [];
             if (newPos < oldPos) { 
                 if (newPos <= 75 && oldPos > 75 && old75) pushes.push(`**${old75}** into the Extended List`);
@@ -4250,7 +4256,7 @@ app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
 
 app.get('/api/verifications/pending', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     try {
         const result = await pool.query(`
@@ -4269,7 +4275,7 @@ app.get('/api/verifications/pending', async (req, res) => {
 
 app.patch('/api/verifications/pending/:verifId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const verifId = Number.parseInt(req.params.verifId, 10);
     const name = cleanProfileText(req.body.name, 20);
     const author = cleanProfileText(req.body.author, 100);
@@ -4350,7 +4356,7 @@ app.patch('/api/verifications/pending/:verifId', async (req, res) => {
 
 app.delete('/api/verifications/pending/:verifId', async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Unauthorized' });
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     const verifId = Number.parseInt(req.params.verifId, 10);
     if (!Number.isInteger(verifId)) return res.status(400).json({ error: 'Invalid verification.' });
 
@@ -4369,11 +4375,14 @@ app.delete('/api/verifications/pending/:verifId', async (req, res) => {
 });
 
 app.get('/api/admin/pending-verifications', isAdmin, async (req, res) => {
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     try {
         const result = await pool.query(`
-            SELECT v.*, u.username 
+            SELECT v.id, v.user_id, v.level_name, v.level_author, v.level_id,
+                   v.video_url, v.raw_footage_url, v.placement_opinion,
+                   v.enjoyment_rating, v.submission_comments, v.list_type,
+                   v.status, v.created_at, u.username
             FROM verifications v
             JOIN users u ON v.user_id = u.id
             WHERE v.status = 'pending' AND v.list_type = $1
@@ -4389,7 +4398,7 @@ app.get('/api/admin/pending-verifications', isAdmin, async (req, res) => {
 app.post('/api/admin/reject-verification', isAdmin, async (req, res) => {
     const { verifId, reason } = req.body;
     const actorId = req.session.userId;
-    const activeSubdomainList = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const activeSubdomainList = req.currentList;
     const client = await pool.connect();
 
     try {
@@ -4457,9 +4466,10 @@ app.post('/api/admin/reject-verification', isAdmin, async (req, res) => {
 });
 
 app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
-    const { verifId, demonId } = req.body;
+    const { verifId } = req.body;
+    let demonId = req.body.demonId;
     const actorId = req.session.userId;
-    const activeSubdomainList = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const activeSubdomainList = req.currentList;
     const client = await pool.connect();
     let userId = null;
     let listType = activeSubdomainList;
@@ -4497,19 +4507,41 @@ app.post('/api/admin/approve-verification', isAdmin, async (req, res) => {
             return res.status(403).json({ error: "You cannot review your own verification." });
         }
 
+        if (activeSubdomainList === 'challenge' && req.body.level) {
+            const level = req.body.level;
+            const position = Number(level.position);
+            const requirement = Number(level.requirement);
+            if (!String(level.name || '').trim() || !String(level.author || '').trim() || !String(level.level_id || '').trim()
+                || !Number.isInteger(position) || position < 1 || position > 150
+                || !Number.isInteger(requirement) || requirement < 1 || requirement > 100) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Enter a level name, creator, ID, position from 1 to 150, and requirement from 1 to 100.' });
+            }
+            await client.query('UPDATE demons SET position = position + 1 WHERE list_type = $2 AND position >= $1', [position, activeSubdomainList]);
+            const inserted = await client.query(`
+                INSERT INTO demons (name, author, position, level_id, requirement, list_type)
+                VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
+            `, [String(level.name).trim(), String(level.author).trim(), position, level.level_id, requirement, activeSubdomainList]);
+            demonId = inserted.rows[0].id;
+            await client.query(`
+                INSERT INTO changelog (demon_id, demon_name, change_type, old_position, new_position, list_type)
+                VALUES ($1, $2, 'added', NULL, $3, $4)
+            `, [demonId, String(level.name).trim(), position, activeSubdomainList]);
+        }
+
+        const destination = await client.query('SELECT position, name, list_type FROM demons WHERE id = $1 FOR UPDATE', [demonId]);
+        const demon = destination.rows[0];
+        if (!demon || demon.list_type !== activeSubdomainList) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'The destination level does not belong to the active list.' });
+        }
+
         await client.query("UPDATE verifications SET status = $1 WHERE id = $2 AND status = 'pending'", ['accepted', verifId]);
 
         let recordId = null;
         if (verification.list_type === 'impossible') {
             await client.query('UPDATE demons SET showcase_url = $1 WHERE id = $2', [verification.video_url, demonId]);
         } else {
-            const demonResult = await client.query('SELECT position, name FROM demons WHERE id = $1', [demonId]);
-            const demon = demonResult.rows[0];
-            if (!demon) {
-                await client.query('ROLLBACK');
-                return res.status(404).json({ error: "Level not found." });
-            }
-
             const newRecord = await client.query(`
                 INSERT INTO records
                     (user_id, demon_id, percentage, video_url, status, list_type, accepted_position, enjoyment_rating, personal_placement, verification_id, submission_comments)
@@ -4666,16 +4698,16 @@ app.get('/api/admin/moderator-leaderboard', isAdmin, async (req, res) => {
 
 
 app.get('/moderators', isMod, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'moderators.html'));
+    sendListPage(req, res, 'moderators.html');
 });
 
 app.get('/admin', isAdmin, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+    sendListPage(req, res, 'admin.html');
 });
 
 app.get('/api/profile/:username', async (req, res) => {
     const { username } = req.params;
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     try {
         const userResult = await pool.query(
@@ -4790,9 +4822,7 @@ app.get('/api/profile/:username', async (req, res) => {
         `, [user.id, list]);
 
         const leaderboardRank = rankResult.rows.length ? Number(rankResult.rows[0].rank) : 0;
-        const badges = list === 'primary'
-            ? await evaluateUserBadges(user.id, list)
-            : [];
+        const badges = await evaluateUserBadges(user.id, list);
 
         let moderation = null;
         let badgeCatalog = null;
@@ -4812,11 +4842,12 @@ app.get('/api/profile/:username', async (req, res) => {
                     targetProtectedFromBans: isStaffRole(user.role),
                 };
             }
-            if (viewer?.role === 'owner' && list === 'primary') {
+            if (viewer?.role === 'owner') {
                 badgeCatalog = loadBadgeConfig().groups
+                    .filter(group => isBadgeGroupAvailableOnList(group.id, list))
                     .map(group => ({
                         id: String(group.id || ''),
-                        scope: group.scope === 'global' ? 'global' : 'list',
+                        scope: 'global',
                         iconPath: group.iconPath || '/assets/icon.png',
                         tiers: (Array.isArray(group.tiers) ? group.tiers : [])
                             .map(tier => ({
@@ -4920,7 +4951,7 @@ app.get('/api/leaderboard/search', async (req, res) => {
 });
 
 app.get('/api/leaderboard', async (req, res) => {
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     try {
         const sync = await syncLeaderboardTopOne(list);
@@ -5050,7 +5081,7 @@ app.get('/api/leaderboard', async (req, res) => {
 
 app.get('/api/demons/:id', async (req, res) => {
     const demonId = req.params.id;
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     
     try {
         const demonResult = await pool.query(`
@@ -5968,7 +5999,7 @@ app.delete('/api/settings/delete', async (req, res) => {
 
         await client.query('COMMIT');
 
-        for (const list of ['primary', 'impossible']) {
+        for (const list of ['primary', 'impossible', 'challenge']) {
             const sync = await syncLeaderboardTopOne(list);
             for (const changedUserId of sync.changedUserIds || []) {
                 if (changedUserId) await evaluateUserBadges(changedUserId, list);
@@ -6088,6 +6119,7 @@ app.get('/api/demons/:id/history', async (req, res) => {
         }
 
         const { position: currentActualPosRaw, list_type: listType } = currentRes.rows[0];
+        if (listType !== req.currentList) return res.status(404).json({ error: 'Level not found on the active list.' });
         const currentActualPos = parseInt(currentActualPosRaw, 10);
 
         const changelogRes = await client.query(
@@ -6203,7 +6235,7 @@ app.get('/api/demons/:id/history', async (req, res) => {
 });
 
 app.get('/api/changelog', async (req, res) => {
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     try {
         const result = await pool.query(`
@@ -6329,7 +6361,7 @@ app.post('/api/submit-verification', async (req, res) => {
         return res.status(400).json({ error: "Comments are limited to 1000 characters." });
     }
     const userId = req.session.userId;
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
@@ -6751,7 +6783,7 @@ function clanIconUrl(id, updatedAt) {
 }
 
 app.get('/api/clans', async (req, res) => {
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
 
     try {
         const result = await pool.query(`
@@ -6845,7 +6877,7 @@ app.get('/api/clans/:clanId/icon', async (req, res) => {
 
 app.get('/api/clans/:clanId', async (req, res) => {
     const clanId = Number.parseInt(req.params.clanId, 10);
-    const list = req.currentList === 'impossible' ? 'impossible' : 'primary';
+    const list = req.currentList;
     if (!Number.isInteger(clanId)) return res.status(400).json({ error: 'Invalid clan.' });
 
     try {
@@ -7556,4 +7588,5 @@ app.post('/api/reset-password', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server live on port ${PORT}`));
+if (require.main === module) app.listen(PORT, () => console.log(`Server live on port ${PORT}`));
+module.exports = app;

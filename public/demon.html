@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/list-config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Level Info | WBDL</title>
@@ -804,7 +805,7 @@
         })();
     </script>
     <script>
-        const isImpossibleList = window.location.hostname.includes('impossible');
+        const isImpossibleList = window.WBDLList.id === 'impossible';
 
         const embedParams = new URLSearchParams(window.location.search);
         const isEmbedMode = embedParams.get('embed') === '1' || embedParams.get('nonav') === '1';
@@ -819,7 +820,7 @@
         let currentBannerPreviewTime = 0;
         let bannerPreviewUrlTimer = null;
         let currentRequirement = null;
-        let currentDemonListType = isImpossibleList ? 'impossible' : 'primary';
+        let currentDemonListType = window.WBDLList.id;
 
         if (isEmbedMode) {
             document.documentElement.classList.add('embed-mode');
@@ -1471,7 +1472,7 @@
             if (!placements.length) return '';
 
             const average = placements.reduce((total, placement) => total + placement, 0) / placements.length;
-            return Number.isInteger(average) ? String(average) : average.toFixed(1);
+            return String(Math.round(average));
         }
 
         function renderLevelMeta(data) {
@@ -1487,7 +1488,6 @@
             const uploadDate = formatEstimatedUploadDate(data.upload_date_estimate);
             const averageEnjoyment = getAverageEnjoyment(data.records);
             const communityPlacement = getCommunityPlacement(data.records);
-
             updateText.innerHTML = updateVersion ? `Level made in ${escapeHtml(updateVersion)}` : '';
             uploadDateText.innerHTML = uploadDate ? `Uploaded: ${escapeHtml(uploadDate)}` : '';
             averageEnjoymentText.innerHTML = averageEnjoyment ? `Average enjoyment: ${escapeHtml(averageEnjoyment)}/10` : '';
@@ -2015,8 +2015,9 @@
             currentBannerImageVersion = String(data.banner_image_updated_at || '');
             currentBannerPreviewTime = Math.max(0, Number(data.banner_preview_time) || 0);
             currentRequirement = Number(data.requirement);
-            currentDemonListType = String(data.list_type || (isImpossibleList ? 'impossible' : 'primary')).toLowerCase();
+            currentDemonListType = String(data.list_type || (window.WBDLList.id)).toLowerCase();
             document.body.classList.toggle('impossible-list', currentDemonListType === 'impossible');
+            document.body.classList.toggle('challenge-list', currentDemonListType === 'challenge');
             const requirementField = document.getElementById('minimum-list-percentage-field');
             if (requirementField) {
                 if (currentDemonListType === 'impossible') requirementField.remove();

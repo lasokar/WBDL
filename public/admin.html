@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/list-config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Panel | WBDL</title>
@@ -361,7 +362,8 @@
     <script src="/icon-renderer.js"></script>
     <script>
         let currentUser = null;
-        const isImpossibleList = window.location.hostname.includes('impossible');
+        const isImpossibleList = window.WBDLList.id === 'impossible';
+        const isChallengeList = window.WBDLList.id === 'challenge';
         const verificationNotificationSettings = {
             verificationNotifications: false,
             discordPing: false,
@@ -719,6 +721,8 @@
 
             container.innerHTML = list.map(v => {
                 const isOwnVerification = currentUser && currentUser.username.toLowerCase() === v.username.toLowerCase();
+                // The owner may approve their own submissions; other admins may not.
+                const canApproveVerification = !isOwnVerification || currentUser?.role === 'owner';
 
                 const reqHTML = isImpossibleList ? '' : `
                     <div>
@@ -760,9 +764,9 @@
 
                         <div style="display: flex; gap: 10px;">
                             <button class="btn-accept" style="flex: 2;" 
-                                ${isOwnVerification ? 'disabled' : ''} 
+                                ${canApproveVerification ? '' : 'disabled'} 
                                 onclick="approveVerification(${v.id})">
-                                ${isOwnVerification ? 'you cannot approve ur own!!!' : 'Approve'}
+                                ${canApproveVerification ? 'Approve' : 'You cannot approve your own verification'}
                             </button>
                             <button class="btn-reject" style="flex: 1;" onclick="rejectVerification(${v.id})">Reject</button>
                         </div>
@@ -789,6 +793,18 @@
             };
 
             if(!payload.position) return alert("Please set a final position.");
+            if (isChallengeList) {
+                const res = await fetch('/api/admin/approve-verification', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ verifId: id, level: payload })
+                });
+                const data = await res.json();
+                if (!res.ok) return alert(data.error || 'Verification could not be approved.');
+                alert('Success! Level added.');
+                loadVerifications();
+                loadAdminList();
+                return;
+            }
 
             const demonRes = await fetch('/api/admin/add-demon', {
                 method: 'POST',
@@ -801,14 +817,12 @@
                 return alert("Failed to add demon: " + err.error);
             }
 
-            const demonsFetch = await fetch('/api/demons');
-            const demons = await demonsFetch.json();
-            const newDemon = demons.find(d => d.level_id == payload.level_id);
+            const addedDemon = await demonRes.json();
 
             const verifRes = await fetch('/api/admin/approve-verification', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ verifId: id, demonId: newDemon.id })
+                body: JSON.stringify({ verifId: id, demonId: addedDemon.demonId })
             });
 
             if (verifRes.ok) {

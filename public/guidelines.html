@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/list-config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Guidelines | WBDL</title>
@@ -169,6 +170,9 @@
                     </div>
                 </li>
                 <li>
+                    The Macro Bot setting may also be turned on as long as playback remains disabled.
+                </li>
+                <li>
                     Userscripts and other external code injections that affect the game are also disallowed.
                 </li>
                 <li>
@@ -190,7 +194,7 @@
                         <span class="b">Note:</span> If the level doesn't exactly match the original on the servers due to it using unsupported objects (like missing a few blocks or decoration), that's fine as long as it remains beatable and is mostly functional.
                     </div>
                 </li>
-                <li>Levels must be 30 seconds long minimum. End-screens or long auto parts do not count towards this time.</li>
+                <li id="level-length-rule">Levels must be 30 seconds long minimum. End-screens or long auto parts do not count towards this time.</li>
                 <li>Aim for decent gameplay and visual quality. Doesn't have to be rate worthy, but no recent tab stuff. Put some effort into creating levels...</li>
                 <li>Buffed, nerfed, or modified versions of existing list levels will NOT be accepted.</li>
                 <li>Upon completing the level, submission rules also apply.</li>
@@ -213,7 +217,11 @@
 
     <script src="/nav.js"></script>
     <script>
-        const isImpossibleList = window.location.hostname.includes('impossible');
+        const isImpossibleList = window.WBDLList.id === 'impossible';
+
+        if (window.WBDLList.id === 'challenge') {
+            document.getElementById('level-length-rule').innerText = 'Challenge levels must be between 5 and 30 seconds long. End-screens or long auto parts do not count towards this time.';
+        }
 
         if (isImpossibleList) {
             document.body.classList.add('impossible-list');

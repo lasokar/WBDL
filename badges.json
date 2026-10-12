@@ -34,7 +34,8 @@
           "threshold": 150,
           "iconPath": "/assets/badges/badge-4.png"
         }
-      ]
+      ],
+      "scope": "global"
     },
     {
       "id": "verified-levels",
@@ -63,7 +64,8 @@
           "threshold": 20,
           "iconPath": "/assets/badges/badge-7.png"
         }
-      ]
+      ],
+      "scope": "global"
     },
     {
       "id": "top-level-completion",
@@ -92,7 +94,8 @@
           "threshold": 3,
           "iconPath": "/assets/trophies/top1.png"
         }
-      ]
+      ],
+      "scope": "global"
     },
     {
       "id": "leaderboard-first",
@@ -121,7 +124,8 @@
           "threshold": 2592000,
           "iconPath": "/assets/badges/badge-10.png"
         }
-      ]
+      ],
+      "scope": "global"
     },
     {
       "id": "contributor",

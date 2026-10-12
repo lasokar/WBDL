@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="/list-config.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unofficial Lists | WBDL</title>
+    <link rel="icon" type="image/png" href="/assets/icon.png">
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .unofficial-page {
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 64px 24px 80px;
+        }
+
+        .unofficial-page h1 {
+            font-size: clamp(2rem, 5vw, 2.6rem);
+            text-align: center;
+            margin-bottom: 22px;
+        }
+
+        .community-disclaimer {
+            max-width: 780px;
+            margin: 0 auto 36px;
+            padding: 18px 22px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--surface);
+            color: var(--text-muted);
+            line-height: 1.7;
+        }
+
+        .community-list-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+            gap: 18px;
+        }
+
+        .community-list-card {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            padding: 20px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface);
+            color: var(--text);
+            text-decoration: none;
+            transition: border-color 0.2s, background 0.2s, transform 0.2s;
+        }
+
+        .community-list-card:hover,
+        .community-list-card:focus-visible {
+            background: var(--surface-2);
+            border-color: var(--accent);
+        }
+
+        .community-list-card:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 3px;
+        }
+
+        .community-list-icon {
+            width: 88px;
+            height: 88px;
+            object-fit: cover;
+            border-radius: 16px;
+            flex-shrink: 0;
+        }
+
+        .community-list-info { min-width: 0; flex: 1; }
+        .community-list-info h2 { font-size: 1.5rem; margin-bottom: 8px; }
+        .community-list-info p { color: var(--text-muted); font-size: 0.9rem; }
+
+        @media (max-width: 480px) {
+            .unofficial-page { padding: 42px 16px 64px; }
+            .community-list-card { padding: 16px; gap: 14px; }
+            .community-list-icon { width: 70px; height: 70px; border-radius: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="global-nav"></div>
+
+    <main class="unofficial-page">
+        <h1>Unofficial Lists</h1>
+        <p class="community-disclaimer">These lists are community-made and NOT linked to your WBDL account. Please do not message WBDL staff about anything related to these lists as we most likely cannot help you.</p>
+
+        <div class="community-list-grid">
+            <a class="community-list-card" href="https://turkballbredissus.github.io/WBPLL/" target="_blank" rel="noopener noreferrer" aria-label="Visit WBPLL (opens in a new tab)">
+                <img class="community-list-icon" src="/assets/wbpll.png" alt="WBPLL icon" width="88" height="88">
+                <div class="community-list-info">
+                    <h2>WBPLL</h2>
+                    <p>Creator: Turkball</p>
+                </div>
+            </a>
+        </div>
+    </main>
+
+    <script src="/nav.js"></script>
+</body>
+</html>

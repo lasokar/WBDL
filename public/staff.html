@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/list-config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Staff | WBDL</title>
@@ -194,7 +195,7 @@
         })();
     </script>
     <script>
-        const isImpossibleList = window.location.hostname.includes('impossible');
+        const isImpossibleList = window.WBDLList.id === 'impossible';
 
         const embedParams = new URLSearchParams(window.location.search);
         const isEmbedMode = embedParams.get('embed') === '1' || embedParams.get('nonav') === '1';

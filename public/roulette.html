@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/list-config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Roulette | WBDL</title>
@@ -337,8 +338,8 @@
             window.location.replace(`${window.location.protocol}//${mainHost}/roulette`);
         }
 
-        const STORAGE_KEY = 'wbdl-roulette-save-v2';
-        const LEGACY_STORAGE_KEY = 'wbdl-roulette-save-v1';
+        const STORAGE_KEY = window.WBDLList.id === 'challenge' ? 'wbcl-roulette-save-v2' : 'wbdl-roulette-save-v2';
+        const LEGACY_STORAGE_KEY = window.WBDLList.id === 'challenge' ? 'wbcl-roulette-save-v1' : 'wbdl-roulette-save-v1';
         let demons = [];
         let includeLegacyLevels = false;
         let state = loadSave();
@@ -504,7 +505,7 @@
 
             const level = ensureCurrentLevel();
             if (!level) {
-                card.innerHTML = '<div class="complete-state"><h2>No unused levels available.</h2></div>';
+                card.innerHTML = '<div class="complete-state"><h2>No levels available.</h2></div>';
                 return;
             }
 

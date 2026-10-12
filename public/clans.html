@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/list-config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clans | WBDL</title>
@@ -984,7 +985,7 @@ window.WBDLIconRenderer = (() => {
                     setClanPath(canonicalName, { replace: true });
                 }
 
-                document.title = `[${canonicalName}] Clan | WBDL`;
+                document.title = `[${canonicalName}] Clan | ${window.WBDLList.shortName}`;
                 renderClanDetail();
                 loading.style.display = 'none';
                 content.style.display = 'block';
@@ -997,7 +998,7 @@ window.WBDLIconRenderer = (() => {
         function showClanIndex(updateHistory = true) {
             if (updateHistory) setClanPath(null);
             state.detail = null;
-            document.title = 'Clans | WBDL';
+            document.title = `Clans | ${window.WBDLList.shortName}`;
             document.getElementById('clan-detail-view').style.display = 'none';
             document.getElementById('clan-index-view').style.display = 'block';
             loadClanIndex();

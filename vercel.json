@@ -8,5 +8,11 @@
             "path": "/api/leaderboard/top1-check",
             "schedule": "0 0 * * *"
         }
-    ]
+    ],
+    "framework": "express",
+    "functions": {
+        "server.js": {
+            "includeFiles": "public/**"
+        }
+    }
 }

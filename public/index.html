@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/list-config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WBDL | Web Browser Demon List</title>
@@ -547,7 +548,8 @@
 
     <script src="/nav.js"></script>
     <script>
-        const isImpossibleList = window.location.hostname.includes('impossible');
+        const isImpossibleList = window.WBDLList.id === 'impossible';
+        const isChallengeList = window.WBDLList.id === 'challenge';
         let allDemons = [];
         let currentListTab = 'main';
         let completedDemonIds = new Set();
@@ -642,6 +644,12 @@
             
             document.getElementById('headline-text').innerText = "Web Browser ILL";
             document.getElementById('subheadline-text').innerText = "The human limit of Web Dashers. Give these levels a try... if you dare >:)";
+        }
+
+        if (isChallengeList) {
+            document.getElementById('headline-text').innerText = "Web Browser Challenge List";
+            document.getElementById('subheadline-text').innerText = 'The WBCL Ranks the hardest challenges completed on the "Geometry Dash: Try Me!" website.';
+            document.getElementById('tab-main').innerText = "Challenge List";
         }
 
         const desktopLayoutQuery = window.matchMedia('(min-width: 1500px)');

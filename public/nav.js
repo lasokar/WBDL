@@ -3,6 +3,46 @@ const TIME_MACHINE_MIN_DATE_FALLBACK = '2026-01-01';
 let timeMachineMinDateCache = null;
 let timeMachineMinDatePromise = null;
 
+function renderListsDropdown() {
+    const isMoreListsPage = window.location.pathname === '/more-lists' || window.location.pathname === '/more-lists.html';
+    return `<div class="dropdown lists-dropdown">
+        <button type="button" class="dropbtn" aria-expanded="false" aria-controls="lists-menu">Lists <span aria-hidden="true">▾</span></button>
+        <div class="dropdown-content" id="lists-menu" aria-label="Lists">
+            ${Object.values(window.WBDLLists.definitions).map(list => `<a href="${window.WBDLLists.url(list.id, window.location)}" ${!isMoreListsPage && list.id === window.WBDLList.id ? 'aria-current="page"' : ''}>${list.label}</a>`).join('')}
+            <a href="${window.WBDLLists.url('primary', window.location, '/more-lists')}" ${isMoreListsPage ? 'aria-current="page"' : ''}>Unofficial Lists</a>
+        </div>
+    </div>`;
+}
+
+function setupListsDropdown(navContainer) {
+    const dropdown = navContainer.querySelector('.lists-dropdown');
+    if (!dropdown) return;
+    const trigger = dropdown.querySelector('button');
+    const setOpen = open => {
+        dropdown.classList.toggle('is-open', open);
+        trigger.setAttribute('aria-expanded', String(open));
+    };
+    trigger.addEventListener('click', () => setOpen(trigger.getAttribute('aria-expanded') !== 'true'));
+    dropdown.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            setOpen(false);
+            trigger.focus();
+        } else if (event.key === 'ArrowDown' && event.target === trigger) {
+            event.preventDefault();
+            setOpen(true);
+            dropdown.querySelector('a').focus();
+        }
+    });
+    dropdown.addEventListener('focusout', event => {
+        if (!dropdown.contains(event.relatedTarget)) setOpen(false);
+    });
+    if (navContainer.closeListsOnOutsideClick) document.removeEventListener('click', navContainer.closeListsOnOutsideClick);
+    navContainer.closeListsOnOutsideClick = event => {
+        if (!dropdown.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('click', navContainer.closeListsOnOutsideClick);
+}
+
 function getTodayDateInputValue() {
     const now = new Date();
     const year = now.getFullYear();
@@ -275,8 +315,10 @@ function renderTimeMachineNavbar(navContainer, date, user = null) {
             <button type="button" onclick="resetTimeMachine()" style="width: auto; margin-top: 0; padding: 7px 13px; border-radius: var(--radius-sm, 8px); border: 0; background: var(--accent); color: #000; cursor: pointer; font: inherit; font-weight: 900;">
                 Back to present
             </button>
+            ${renderListsDropdown()}
         </nav>
     `;
+    setupListsDropdown(navContainer);
 }
 
 async function loadNavbar() {
@@ -302,27 +344,16 @@ async function loadNavbar() {
         return;
     }
 
-    const isImpossibleList = window.location.hostname.includes('impossible');
-
-    const themeColor = isImpossibleList ? "#ff4444" : "#00e676";
-    const brandName = isImpossibleList ? "WBDL Impossible List" : "Web Browser Demonlist";
-    const brandTextStyle = isImpossibleList
+    const activeList = window.WBDLList;
+    const themeColor = activeList.color;
+    const brandName = activeList.brand;
+    const brandTextStyle = activeList.id !== 'primary'
         ? `color: ${themeColor}; font-weight: 800;`
         : `font-weight: 800; background: linear-gradient(135deg, #5f91b8 0%, #8bb8dc 34%, #79a9cf 66%, #527fa6 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;`;
 
-    const brandIcon = isImpossibleList ? "/assets/impossible.png" : "/assets/icon.png";
+    const brandIcon = activeList.icon;
 
     const navLink = "color: #c3c8cf; text-decoration: none; font-weight: 500; font-size: 0.98em; transition: color 0.15s;";
-
-    const currentHost = window.location.host; 
-    let listSwapLink = "";
-
-    if (isImpossibleList) {
-        const mainHost = currentHost.replace(/^impossible\./, '');
-        listSwapLink = `<a href="//${mainHost}" style="${navLink}">Main List</a>`;
-    } else {
-        listSwapLink = `<a href="//impossible.${currentHost}" style="${navLink}">ILL</a>`;
-    }
 
     let userSection = `
         <a href="/login" style="color: #c3c8cf; text-decoration: none; margin-right: 18px; font-weight: 600;">Login</a>
@@ -411,12 +442,13 @@ async function loadNavbar() {
                 <a href="/changelog" style="${navLink}">Changelog</a>
                 <a href="javascript:openTimeMachine()" style="${navLink}">Time Machine</a>
                 <a href="/roulette" style="${navLink}">Roulette</a>
-                ${listSwapLink}
+                ${renderListsDropdown()}
             </div>
             <div id="user-nav">${userSection}</div>
         </nav>
     `;
 
+    setupListsDropdown(navContainer);
     if (user.loggedIn) {
         updateNotiBadge();
     }
@@ -495,9 +527,12 @@ async function updateNotiBadge() {
 }
 
 (function() {
-    const isImpossibleList = window.location.hostname.includes('impossible');
-
-    if (isImpossibleList) {
-        document.body.classList.add('impossible-list');
+    const list = window.WBDLList;
+    document.body.classList.toggle('impossible-list', list.id === 'impossible');
+    document.body.classList.toggle('challenge-list', list.id === 'challenge');
+    if (list.id === 'challenge') {
+        document.querySelectorAll('.nav-back').forEach(link => {
+            if (link.textContent.trim() === 'Back to Main List') link.textContent = 'Back to Challenge List';
+        });
     }
 })();
