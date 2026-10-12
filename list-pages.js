@@ -56,6 +56,9 @@ function sendListPage(req, res, filename) {
 function htmlFiles(req, res, next) {
     if (!['GET', 'HEAD'].includes(req.method) || !/^\/[a-z-]+\.html$/i.test(req.path)) return next();
     const filename = req.path.slice(1);
+    if (filename === 'roulette.html' && req.currentList === 'impossible') {
+        return res.status(404).send('Roulette is not available on the ILL.');
+    }
     if (!fs.existsSync(path.join(templatePath, filename))) return next();
     if (filename === 'admin.html' || filename === 'moderators.html') return res.redirect(302, '/' + filename.replace('.html', ''));
     return sendListPage(req, res, filename);

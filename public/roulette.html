@@ -333,11 +333,6 @@
 
     <script src="/nav.js"></script>
     <script>
-        if (window.location.hostname.startsWith('impossible.')) {
-            const mainHost = window.location.host.replace(/^impossible\./, '');
-            window.location.replace(`${window.location.protocol}//${mainHost}/roulette`);
-        }
-
         const STORAGE_KEY = window.WBDLList.id === 'challenge' ? 'wbcl-roulette-save-v2' : 'wbdl-roulette-save-v2';
         const LEGACY_STORAGE_KEY = window.WBDLList.id === 'challenge' ? 'wbcl-roulette-save-v1' : 'wbdl-roulette-save-v1';
         let demons = [];

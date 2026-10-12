@@ -441,7 +441,7 @@ async function loadNavbar() {
                 <a href="/clans" style="${navLink}">Clans</a>
                 <a href="/changelog" style="${navLink}">Changelog</a>
                 <a href="javascript:openTimeMachine()" style="${navLink}">Time Machine</a>
-                <a href="/roulette" style="${navLink}">Roulette</a>
+                ${activeList.id === 'impossible' ? '' : `<a href="/roulette" style="${navLink}">Roulette</a>`}
                 ${renderListsDropdown()}
             </div>
             <div id="user-nav">${userSection}</div>
@@ -475,12 +475,14 @@ async function loadFooter() {
     footerContainer.style.marginTop = "50px";
     footerContainer.style.backgroundColor = "var(--surface, #161616)";
     
+    const aboutWbdlUrl = window.WBDLList.id === 'primary' ? '/about' : 'https://webdemonlist.org/about/';
+
     footerContainer.innerHTML = `
         <div class="footer-content" style="display: flex; justify-content: space-around; gap: 40px; flex-wrap: wrap; width: 100%; max-width: 900px; padding: 30px 20px; box-sizing: border-box;">
             
             <div class="footer-section" style="display: flex; flex-direction: column; align-items: flex-start; min-width: 160px;">
                 <h3 style="margin: 0 0 10px 0; font-size: 0.82em; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text, #fff); font-family: var(--font-display), sans-serif; font-weight: 700; opacity: 0.9;">Info</h3>
-                <a href="/about" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 6px; transition: color 0.15s;">About WBDL</a>
+                <a href="${aboutWbdlUrl}" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 6px; transition: color 0.15s;">About WBDL</a>
                 <a href="/guidelines" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 6px; transition: color 0.15s;">Submission Rules</a>
                 <a href="/leaderboard" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 6px; transition: color 0.15s;">Leaderboard</a>
                 <a href="/clans" style="color: var(--text-muted, #888); text-decoration: none; font-size: 0.92em; margin-bottom: 6px; transition: color 0.15s;">Clans</a>

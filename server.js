@@ -1549,7 +1549,6 @@ function getBadgeMetricValue(metrics, requirement = {}) {
     return Number(metrics[requirement.type]) || 0;
 }
 
-// Completion and Victor badges belong to the main list, not the Challenge List.
 const CHALLENGE_DISABLED_BADGE_GROUPS = new Set(['levels-completed', 'top-level-completion']);
 
 function isBadgeGroupAvailableOnList(groupId, list) {
@@ -1799,6 +1798,7 @@ app.get('/submit', (req, res) => {
     sendListPage(req, res, 'submit.html');
 });
 app.get('/roulette', (req, res) => {
+    if (req.currentList === 'impossible') return res.status(404).send('Roulette is not available on the ILL.');
     sendListPage(req, res, 'roulette.html');
 });
 app.get('/profile', (req, res) => {
@@ -3794,32 +3794,50 @@ app.post('/api/admin/update-record', isMod, async (req, res) => {
     }
 });
 
-const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
-const ILL_DISCORD_WEBHOOK_URL = process.env.ILL_DISCORD_WEBHOOK_URL;
-
 async function sendDiscordNotification(content, list = 'primary') {
     const isILL = list === 'impossible';
-    const webhookUrl = list === 'challenge' ? process.env.CL_DISCORD_WEBHOOK_URL : (isILL ? ILL_DISCORD_WEBHOOK_URL : DISCORD_WEBHOOK_URL);
-    
-    if (!webhookUrl) return;
-    
-    const username = list === "challenge" ? "Challenge List Changes" : (isILL ? "Impossible List Changes" : "List Changes");
-    const avatarUrl = list === "challenge" ? "https://challenge.webdemonlist.org/assets/challenge.png" : (isILL ? "https://webdemonlist.org/assets/impossible.png" : "https://webdemonlist.org/assets/icon.png");
-    const roleId = list === "challenge" ? "1559002390794084475" : (isILL ? "1531774623052599539" : "1493780241628528730");
-
-    try {
-        await fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                username: username,
-                avatar_url: avatarUrl,
-                content: `${roleId ? `<@&${roleId}> ` : ""}${content}`
-            })
-        });
-    } catch (err) {
-        console.error("Discord notification failed:", err);
+    const webhookUrl = list === 'challenge'
+        ? process.env.CL_DISCORD_WEBHOOK_URL
+        : (isILL ? process.env.ILL_DISCORD_WEBHOOK_URL : process.env.DISCORD_WEBHOOK_URL);
+    if (!webhookUrl) {
+        console.warn(`Discord list webhook is not configured for ${list}.`);
+        return false;
     }
+
+    const username = list === 'challenge' ? 'Challenge List Changes' : (isILL ? 'Impossible List Changes' : 'List Changes');
+    const avatarUrl = list === 'challenge' ? 'https://challenge.webdemonlist.org/assets/challenge.png' : (isILL ? 'https://webdemonlist.org/assets/impossible.png' : 'https://webdemonlist.org/assets/icon.png');
+    const roleId = list === 'challenge' ? '1559002390794084475' : (isILL ? '1531774623052599539' : '1493780241628528730');
+    const payload = JSON.stringify({
+        username,
+        avatar_url: avatarUrl,
+        content: `${roleId ? `<@&${roleId}> ` : ''}${content}`,
+    });
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        let retryDelayMs = 500 * attempt;
+        try {
+            const response = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload,
+                signal: AbortSignal.timeout(8000),
+            });
+            if (response.ok) return true;
+
+            const responseBody = (await response.text().catch(() => '')).slice(0, 400);
+            const transient = response.status === 429 || response.status >= 500;
+            console.error(`Discord list webhook (${list}) returned HTTP ${response.status} (attempt ${attempt}/3): ${responseBody}`);
+            if (!transient) return false;
+            if (response.status === 429) {
+                const retryAfter = Number(response.headers?.get('retry-after'));
+                if (Number.isFinite(retryAfter) && retryAfter > 0) retryDelayMs = Math.min(10000, Math.round(retryAfter * 1000));
+            }
+        } catch (err) {
+            console.error(`Discord list webhook (${list}) failed (attempt ${attempt}/3):`, err);
+        }
+        if (attempt < 3) await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+    }
+    return false;
 }
 
 app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
@@ -3900,7 +3918,7 @@ app.post('/api/admin/add-demon', isAdmin, async (req, res) => {
             msg += `.`;
         }
 
-        sendDiscordNotification(msg, list);
+        await sendDiscordNotification(msg, list);
 
         const leaderboardSync = await syncLeaderboardTopOne(list);
         for (const changedUserId of leaderboardSync.changedUserIds || []) {
@@ -3987,7 +4005,7 @@ app.post('/api/admin/delete-demon', isOwner, async (req, res) => {
             }
         }
 
-        sendDiscordNotification(msg, list);
+        await sendDiscordNotification(msg, list);
 
         const leaderboardSync = await syncLeaderboardTopOne(list);
         for (const changedUserId of leaderboardSync.changedUserIds || []) {
@@ -4237,7 +4255,7 @@ app.post('/api/admin/move-demon', isAdmin, async (req, res) => {
             }
         }
 
-        sendDiscordNotification(msg, list);
+        await sendDiscordNotification(msg, list);
 
         const leaderboardSync = await syncLeaderboardTopOne(list);
         for (const changedUserId of leaderboardSync.changedUserIds || []) {
